@@ -7,10 +7,16 @@ import re
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 import requests
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 # Telegram Bot API Token ve Chat ID bilgilerinizi buraya ekleyin
-TELEGRAM_API_TOKEN = "7142025144:AAFOhFR32EppPGXtw996yytKFesxbjUXoeo"
-TELEGRAM_CHAT_ID = 1860354090
+TELEGRAM_API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+print(TELEGRAM_API_TOKEN)
+print(TELEGRAM_CHAT_ID)
 
 def send_telegram_message(message):
     url = f'https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendMessage'
