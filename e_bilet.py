@@ -15,24 +15,26 @@ load_dotenv()
 # Telegram Bot API Token ve Chat ID bilgilerinizi buraya ekleyin
 TELEGRAM_API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-print(TELEGRAM_API_TOKEN)
-print(TELEGRAM_CHAT_ID)
+TELEGRAM_CHAT_ID_2 = os.getenv("TELEGRAM_CHAT_ID_2")
+
 
 def send_telegram_message(message):
     url = f'https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendMessage'
+    chat_ids = [TELEGRAM_CHAT_ID, TELEGRAM_CHAT_ID_2]
     payload = {
-        'chat_id': TELEGRAM_CHAT_ID,
         'text': message,
         'parse_mode': 'Markdown'
     }
-    try:
-        response = requests.post(url, data=payload)
-        if response.status_code == 200:
-            print("Telegram mesajı gönderildi.")
-        else:
-            print("Telegram mesajı gönderilemedi:", response.text)
-    except Exception as e:
-        print("Telegram mesajı gönderme hatası:", e)
+    for chat_id in chat_ids:
+        payload['chat_id'] = chat_id
+        try:
+            response = requests.post(url, data=payload)
+            if response.status_code == 200:
+                print(f"Telegram mesajı {chat_id} için gönderildi.")
+            else:
+                print(f"Telegram mesajı {chat_id} için gönderilemedi:", response.text)
+        except Exception as e:
+            print(f"Telegram mesajı {chat_id} için gönderme hatası:", e)
 
 def select_station(driver, input_id, station_name, index=0):
     try:
@@ -48,6 +50,9 @@ def select_station(driver, input_id, station_name, index=0):
             EC.presence_of_all_elements_located((By.CLASS_NAME, 'textLocation'))
         )
 
+        for i, station in enumerate(stations):
+            print(f"{i}: {station.text}")
+
         if stations and len(stations) > index:
             driver.execute_script("arguments[0].scrollIntoView(true);", stations[index])
             stations[index].click()
@@ -57,26 +62,40 @@ def select_station(driver, input_id, station_name, index=0):
     except Exception as e:
         print(f"Hata ({input_id}):", e)
 
-def select_date(driver, date):
+def select_date(driver, target_date: datetime):
     try:
-        # Tarih seçim kutusunu bulun
-        date_input = WebDriverWait(driver, 15).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, '.form-control.calenderPurpleImg'))
+        # 1. Takvimi aç
+        date_input = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, '.form-control.calenderPurpleImg'))
+        )
+        driver.execute_script("arguments[0].click();", date_input)
+        time.sleep(1)  # Takvimin yüklenmesini bekle
+
+        # Gün hücrelerini bekle
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'td'))
         )
 
-        # JavaScript ile tarih ayarlama
-        driver.execute_script("arguments[0].value = arguments[1];", date_input, date.strftime("%d.%m.%Y"))
-        print(f"Tarih seçildi: {date.strftime('%d.%m.%Y')}")
-    except Exception as e:
-        print(f"Tarih seçme hatası:", e)
+        # 3. Hedef günü bul ve tıkla
+        day_to_select = str(target_date.day)
 
+        day_cells = driver.find_elements(By.CSS_SELECTOR, 'td')
+        for cell in day_cells:
+            if cell.text.strip() == day_to_select:
+                cell.click()
+                print(f"Takvimden tarih seçildi: {target_date.strftime('%d.%m.%Y')}")
+                return
+
+        print(f"Tarih hücresi bulunamadı: {target_date.strftime('%d.%m.%Y')}")
+    except Exception as e:
+        print("Takvimden tarih seçme hatası:", e)
 
 def search_trips(driver):
     try:
         search_button = WebDriverWait(driver, 15).until(
             EC.element_to_be_clickable((By.ID, 'searchSeferButton'))
         )
-        search_button.click()
+        driver.execute_script("arguments[0].click();", search_button)
     except Exception as e:
         print("Sefer arama butonu hatası:", e)
 
@@ -93,58 +112,102 @@ def check_trips(driver):
 
         trip_html_list = driver.execute_script('''return Array.from(document.querySelectorAll('[id^="collapseBodygidis"]')).map(el => el.innerHTML);''')
         
+        target_time = datetime.strptime("20:30", "%H:%M").time()
+
         for trip_index, trip_html in enumerate(trip_html_list, start=1):
             soup = BeautifulSoup(trip_html, "html.parser")
-            wagons = soup.find_all("button", class_="btnTicketType")
+
+            trip_name = soup.select("div.trainStationTimeArea span.mt-1")
+            if len(trip_name) >= 2:
+                departure = trip_name[0].text.strip()
+                arrival = trip_name[1].text.strip()
+            else:
+                departure = arrival = "Bilinmiyor"
+
+            time_info = soup.select_one("div.trainStationTimeArea time")
+            time_text = time_info.text.strip() if time_info else "Saat bilgisi yok"
+
+            match = re.search(r"(\d{2}:\d{2})", time_text)
+
+            if match:
+                departure_time_text = match.group(1)
+            else:
+                continue  # Saat formatı uygun değilse geç
+
+            try:
+                trip_time = datetime.strptime(departure_time_text, "%H:%M").time()
+            except ValueError:
+                continue
             
-            message = f"Sefer {trip_index}:"
+            if trip_time <= target_time:
+                continue              
+
+            trip_title = f"{departure} ➡ {arrival} | {time_text}"
+            
+            wagons = soup.find_all("button", class_="btnTicketType")
+            message = f"Sefer {trip_index}: {trip_title}"
+
+            available_wagons = False  # Dolu olmayan vagon sayısı kontrolü
+
             for wagon in wagons:
                 wagon_type = wagon.find("span", class_="mb-0 text-left")
                 wagon_type = wagon_type.text.strip() if wagon_type else "Bilinmiyor"
 
                 status = wagon.find("p", class_="price")
                 status = status.text.strip() if status else "DOLU"
-                
-                message += f"\n  {wagon_type}: {status}"
 
-            send_telegram_message(message)
+                unwanted_types = ["TEKERLEKLİ SANDALYE", "YATAKLI", "LOCA"]
+
+                # Eğer vagon dolu değilse, sadece o vagonu yazdır
+                if status != "DOLU" and wagon_type not in unwanted_types:
+                    available_wagons = True  # Eğer dolu olmayan bir vagon varsa, mesajı göndermek için true yap
+                    message += f"\n  {wagon_type}: {status}"
+                
+            # Mesajda sadece boş vagonlar varsa, mesaj gönder
+            if available_wagons:
+                send_telegram_message(message)
             
     except Exception as e:
         print("Sefer kontrol hatası:", e)
         send_telegram_message(f"Sefer kontrol hatası: {e}")
 
-def automate_check(driver, from_station, to_station, start_date, days_interval=1, check_interval_minutes=30):
+def automate_check(driver, from_station, to_station, start_date, days_interval=1, check_interval_seconds=30):
     try:
-        select_station(driver, 'fromTrainInput', from_station, index=4)
+        select_station(driver, 'fromTrainInput', from_station, index=2)
         time.sleep(2)
-        select_station(driver, 'toTrainInput', to_station, index=10)
+        select_station(driver, 'toTrainInput', to_station, index=8)
+        time.sleep(2)
+        current_date = start_date
+        select_date(driver, current_date)
+        time.sleep(2)
+        search_trips(driver)
+        time.sleep(2)
+        check_trips(driver)
         time.sleep(2)
 
-        current_date = start_date
+
         while True:
-            select_date(driver, current_date)
-            time.sleep(2)
-            search_trips(driver)
-            time.sleep(2)
+            driver.refresh()  # Sayfayı yenile
+            time.sleep(5)
             check_trips(driver)
-            
+
             # Bir sonraki gün için tarih ayarlama
             current_date += timedelta(days=days_interval)
             print(f"Tarih güncelleniyor: {current_date.strftime('%d.%m.%Y')}")
 
-            # Belirtilen dakika aralığında bekle
-            print(f"Bir sonraki kontrol için {check_interval_minutes} dakika bekleniyor...")
-            time.sleep(check_interval_minutes * 60)  # Dakika olarak bekleme süresi
+            # Belirtilen saniye aralığında bekle
+            print(f"Bir sonraki kontrol için {check_interval_seconds} saniye bekleniyor...")
+            time.sleep(check_interval_seconds)  # Saniye olarak bekleme süresi
     except Exception as e:
         print(f"Genel hata: {e}")
         send_telegram_message(f"Genel hata: {e}")
 
 if __name__ == "__main__":
-    driver = uc.Chrome(headless=True, use_subprocess=False)
+    driver = uc.Chrome(headless=False, use_subprocess=False)
     driver.get('https://ebilet.tcddtasimacilik.gov.tr/')
     
     # Başlangıç tarihini ayarlayın
-    start_date = datetime.now()
+    start_date = datetime(2025,4,27)
     
     # Otomatik kontrol başlat
-    automate_check(driver, 'İstanbul', 'Sakarya', start_date, days_interval=0, check_interval_minutes=30)
+    automate_check(driver, 'Sakarya', 'İstanbul', start_date, days_interval=0, check_interval_seconds=30)
