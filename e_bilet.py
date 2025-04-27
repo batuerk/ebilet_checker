@@ -205,6 +205,8 @@ if __name__ == "__main__":
     options = uc.ChromeOptions()
     options.add_argument('--headless')  # Railway headless çalışmalı
     options.add_argument('--no-sandbox')
+    options.add_argument('--disable-gpu')  # GPU kullanımı devre dışı bırak
+    options.add_argument('--disable-software-rasterizer')  # Yazılım tabanlı rasterizasyonu devre dışı bırak
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-blink-features=AutomationControlled')
     driver = uc.Chrome(headless=True, use_subprocess=True, options=options)
