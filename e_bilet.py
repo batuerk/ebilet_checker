@@ -111,7 +111,7 @@ def check_trips(driver):
             return
 
         trip_html_list = driver.execute_script('''return Array.from(document.querySelectorAll('[id^="collapseBodygidis"]')).map(el => el.innerHTML);''')
-        
+
         target_time = datetime.strptime("20:30", "%H:%M").time()
 
         for trip_index, trip_html in enumerate(trip_html_list, start=1):
@@ -143,7 +143,7 @@ def check_trips(driver):
             #     continue              
 
             trip_title = f"{departure} ➡ {arrival} | {time_text}"
-            
+            print(trip_title)
             wagons = soup.find_all("button", class_="btnTicketType")
             message = f"Sefer {trip_index}: {trip_title}"
 
@@ -204,11 +204,11 @@ def automate_check(driver, from_station, to_station, start_date, days_interval=1
 
 if __name__ == "__main__":
     options = uc.ChromeOptions()
+    options.add_argument('--headless')  # Railway headless çalışmalı
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-blink-features=AutomationControlled')
-    options.binary_location = '/usr/bin/google-chrome'
-    driver = uc.Chrome(headless=True, use_subprocess=True, options=options, browser_executable_path='/usr/bin/google-chrome')
+    driver = uc.Chrome(headless=True, use_subprocess=True, options=options)
     driver.get('https://ebilet.tcddtasimacilik.gov.tr/')
     
     # Başlangıç tarihini ayarlayın
