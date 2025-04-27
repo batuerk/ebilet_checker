@@ -1,7 +1,6 @@
-# Temel Python 3.9 slim imajı
 FROM python:3.9-slim
 
-# Gerekli paketlerin kurulumu
+# Gerekli sistem kütüphanelerini yükle
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -25,20 +24,24 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     libcurl4-openssl-dev
 
-# Google Chrome'u indirip kur
+# Google Chrome'u indir ve kur
 RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
     apt install -y ./google-chrome-stable_current_amd64.deb && \
     rm google-chrome-stable_current_amd64.deb
 
-# Chrome sürümünü öğren ve uyumlu ChromeDriver'ı indir
-RUN CHROME_VERSION=$(google-chrome-stable --version | awk '{print $3}' | cut -d'.' -f1,2) && \
+# Chrome sürümünü al ve uyumlu ChromeDriver'ı indir
+RUN CHROME_VERSION=135.0.7049.114 && \
     echo "Chrome Version: $CHROME_VERSION" && \
-    wget https://chromedriver.storage.googleapis.com/${CHROME_VERSION}/chromedriver_linux64.zip && \
-    unzip chromedriver_linux64.zip -d /usr/local/bin && \
-    rm chromedriver_linux64.zip
+    wget https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chromedriver-linux64.zip && \
+    unzip chromedriver-linux64.zip -d /usr/local/bin && \
+    rm chromedriver-linux64.zip
 
-# Sürüm numarasını Docker logs'ta görmek için yazdır
-RUN echo "Installed Chrome Version: $CHROME_VERSION" > /chrome_version.txt
+# Python bağımlılıklarını yükle
+COPY requirements.txt .
+RUN pip install -r requirements.txt
 
-# Çalıştırılacak komut (örneğin bir Python uygulaması başlatılabilir)
+# Kodları kopyala
+COPY . .
+
+# Uygulamayı başlat
 CMD ["python3", "e_bilet.py"]
