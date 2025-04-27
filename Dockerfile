@@ -19,14 +19,23 @@ RUN apt-get update && apt-get install -y \
     libgbm1 \
     libasound2 \
     libxshmfence1 \
-    libxss1
+    libxss1 \
+    apt-transport-https \
+    ca-certificates \
+    libcurl4-openssl-dev
 
-# Chrome indir ve kur
+# Google Chrome'u indir ve kur
 RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
     apt install -y ./google-chrome-stable_current_amd64.deb && \
     rm google-chrome-stable_current_amd64.deb
 
-# Python bağımlılıkları
+# Chrome sürümünü al ve uyumlu ChromeDriver'ı indir
+RUN CHROME_VERSION=$(google-chrome-stable --version | awk '{print $3}' | sed 's/\.[0-9]*$//') && \
+    wget https://chromedriver.storage.googleapis.com/$(echo $CHROME_VERSION)/chromedriver_linux64.zip && \
+    unzip chromedriver_linux64.zip -d /usr/local/bin && \
+    rm chromedriver_linux64.zip
+
+# Python bağımlılıklarını yükle
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
