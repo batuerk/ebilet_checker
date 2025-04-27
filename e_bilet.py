@@ -209,6 +209,8 @@ if __name__ == "__main__":
     options.add_argument('--disable-software-rasterizer')  # Yazılım tabanlı rasterizasyonu devre dışı bırak
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_argument("--enable-logging")
+    options.add_argument("--v=1")  # Verbosity seviyesini artır
     driver = uc.Chrome(headless=True, use_subprocess=True, options=options)
     driver.get('https://ebilet.tcddtasimacilik.gov.tr/')
     
