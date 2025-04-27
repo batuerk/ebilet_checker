@@ -1,18 +1,28 @@
 #!/bin/bash
 
 echo "📦 Bağımlılıklar yükleniyor..."
-apt-get update && apt-get install -y wget curl unzip
+apt-get update && apt-get install -y \
+    wget \
+    unzip \
+    curl \
+    gnupg \
+    fonts-liberation \
+    libasound2 \
+    libnss3 \
+    libxss1 \
+    libxtst6 \
+    libatk-bridge2.0-0 \
+    libgtk-3-0 \
+    libu2f-udev \
+    ca-certificates \
+    xdg-utils \
+    chromium \
+    chromium-driver \
+    python3-pip
 
-echo "🖥 Chrome indiriliyor..."
-wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-dpkg -i google-chrome-stable_current_amd64.deb || apt-get -f install -y
-
-echo "🔧 ChromeDriver indiriliyor..."
-CHROME_VERSION=$(google-chrome --version | awk '{print $3}')
-CHROMEDRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_VERSION")
-wget -q "https://chromedriver.storage.googleapis.com/$CHROMEDRIVER_VERSION/chromedriver_linux64.zip"
-unzip chromedriver_linux64.zip -d /usr/local/bin/
-chmod +x /usr/local/bin/chromedriver
+echo "🖥 Python paketleri kuruluyor..."
+pip3 install --upgrade pip
+pip3 install undetected-chromedriver selenium
 
 echo "🚀 Bot başlatılıyor..."
-python3 bot.py 
+python3 e_bilet.py
