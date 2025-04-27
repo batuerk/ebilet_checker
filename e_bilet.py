@@ -185,7 +185,6 @@ def automate_check(driver, from_station, to_station, start_date, days_interval=1
         check_trips(driver)
         time.sleep(2)
 
-
         while True:
             driver.refresh()  # Sayfayı yenile
             time.sleep(5)
@@ -212,7 +211,7 @@ if __name__ == "__main__":
     driver.get('https://ebilet.tcddtasimacilik.gov.tr/')
     
     # Başlangıç tarihini ayarlayın
-    start_date = datetime(2025,4,27)
+    start_date = datetime.now()
     
     # Otomatik kontrol başlat
     automate_check(driver, 'Sakarya', 'İstanbul', start_date, days_interval=0, check_interval_seconds=30)
