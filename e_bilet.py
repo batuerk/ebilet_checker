@@ -216,7 +216,8 @@ if __name__ == "__main__":
     driver.get('https://ebilet.tcddtasimacilik.gov.tr/')
     
     # Başlangıç tarihini ayarlayın
-    start_date = datetime.now()
+    today_date = datetime.today()
+    start_date = today_date + timedelta(days=1)
     
     # Otomatik kontrol başlat
     automate_check(driver, 'Sakarya', 'İstanbul', start_date, days_interval=0, check_interval_seconds=30)
