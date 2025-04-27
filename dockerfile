@@ -1,4 +1,4 @@
-# Python 3.11 tabanlı bir base image kullanıyoruz
+# Python 3.12 tabanlı bir base image kullanıyoruz
 FROM python:3.12-slim
 
 # Gereksinimler
@@ -18,9 +18,9 @@ RUN apt-get update -y && apt-get install -y \
     libatk-1.0-0 \
     libgtk-3-0 \
     libnspr4 \
-    libu2f-udev
-    python3-distutils  # distutils modülünü yükleyin
-
+    libu2f-udev \
+    python3-distutils \
+    python3-venv  # python3-venv paketini ekleyin
 
 # Google Chrome'un en son sürümünü indir ve kur
 RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
@@ -38,7 +38,7 @@ WORKDIR /app
 
 # Gerekli Python paketlerini yükle
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade setuptools && pip install -r requirements.txt  # setuptools'u güncelle
 
 # Çalıştırılacak Python dosyasını belirle
 COPY . /app
