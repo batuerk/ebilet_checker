@@ -203,7 +203,11 @@ def automate_check(driver, from_station, to_station, start_date, days_interval=1
         send_telegram_message(f"Genel hata: {e}")
 
 if __name__ == "__main__":
-    driver = uc.Chrome(headless=False, use_subprocess=False)
+    options = uc.ChromeOptions()
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    driver = uc.Chrome(headless=False, use_subprocess=False, options=options)
     driver.get('https://ebilet.tcddtasimacilik.gov.tr/')
     
     # Başlangıç tarihini ayarlayın
