@@ -9,6 +9,12 @@ from datetime import datetime, timedelta
 import requests
 from dotenv import load_dotenv
 import os
+import psutil
+
+# CPU ve RAM kullanımını izleme
+print(f"CPU Yükü: {psutil.cpu_percent()}%")
+print(f"RAM Kullanımı: {psutil.virtual_memory().percent}%")
+
 
 load_dotenv()
 
@@ -52,6 +58,9 @@ def select_station(driver, input_id, station_name, index=0):
 
         # for i, station in enumerate(stations):
         #     print(f"{i}: {station.text}")
+        # CPU ve RAM kullanımını izleme
+        print(f"CPU Yükü: {psutil.cpu_percent()}%")
+        print(f"RAM Kullanımı: {psutil.virtual_memory().percent}%")
 
         if stations and len(stations) > index:
             selected_text = stations[index].text
@@ -80,6 +89,10 @@ def select_date(driver, target_date: datetime):
         # 3. Hedef günü bul ve tıkla
         day_to_select = str(target_date.day)
 
+        # CPU ve RAM kullanımını izleme
+        print(f"CPU Yükü: {psutil.cpu_percent()}%")
+        print(f"RAM Kullanımı: {psutil.virtual_memory().percent}%")
+
         day_cells = driver.find_elements(By.CSS_SELECTOR, 'td')
         for cell in day_cells:
             if cell.text.strip() == day_to_select:
@@ -96,6 +109,11 @@ def search_trips(driver):
         search_button = WebDriverWait(driver, 15).until(
             EC.element_to_be_clickable((By.ID, 'searchSeferButton'))
         )
+
+        # CPU ve RAM kullanımını izleme
+        print(f"CPU Yükü: {psutil.cpu_percent()}%")
+        print(f"RAM Kullanımı: {psutil.virtual_memory().percent}%")
+
         driver.execute_script("arguments[0].click();", search_button)
     except Exception as e:
         print("Sefer arama butonu hatası:", e)
@@ -139,8 +157,12 @@ def check_trips(driver):
                 trip_time = datetime.strptime(departure_time_text, "%H:%M").time()
             except ValueError:
                 continue
-            
+            # CPU ve RAM kullanımını izleme
+
+            print(f"CPU Yükü: {psutil.cpu_percent()}%")
+            print(f"RAM Kullanımı: {psutil.virtual_memory().percent}%")
             # if trip_time <= target_time:
+            
             #     continue              
 
             trip_title = f"{departure} ➡ {arrival} | {time_text}"
@@ -222,3 +244,4 @@ if __name__ == "__main__":
     
     # Otomatik kontrol başlat
     automate_check(driver, 'Sakarya', 'İstanbul', start_date, days_interval=0, check_interval_seconds=30)
+    
