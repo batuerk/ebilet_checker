@@ -1,5 +1,5 @@
 # Python 3.11 tabanlı bir base image kullanıyoruz
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Gereksinimler
 RUN apt-get update -y && apt-get install -y \
@@ -19,6 +19,8 @@ RUN apt-get update -y && apt-get install -y \
     libgtk-3-0 \
     libnspr4 \
     libu2f-udev
+    python3-distutils  # distutils modülünü yükleyin
+
 
 # Google Chrome'un en son sürümünü indir ve kur
 RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
