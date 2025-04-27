@@ -139,8 +139,8 @@ def check_trips(driver):
             except ValueError:
                 continue
             
-            if trip_time <= target_time:
-                continue              
+            # if trip_time <= target_time:
+            #     continue              
 
             trip_title = f"{departure} ➡ {arrival} | {time_text}"
             
