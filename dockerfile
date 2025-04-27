@@ -16,10 +16,15 @@ RUN apt-get update && apt-get install -y \
     libxss1 \
     libxtst6
 
+# Çalıştırılacak Python ortamı
+WORKDIR /app
+
 # Python bağımlılıklarını yükle
-RUN pip install --upgrade pip
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Projeyi kopyalayın
+COPY . .
 
 # Uygulamanın çalışacağı komut
 CMD ["python", "e_bilet.py"]
