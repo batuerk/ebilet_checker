@@ -207,7 +207,7 @@ if __name__ == "__main__":
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-blink-features=AutomationControlled')
-    driver = uc.Chrome(headless=False, use_subprocess=False, options=options)
+    driver = uc.Chrome(headless=True, use_subprocess=False, options=options)
     driver.get('https://ebilet.tcddtasimacilik.gov.tr/')
     
     # Başlangıç tarihini ayarlayın
