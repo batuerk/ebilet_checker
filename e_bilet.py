@@ -50,13 +50,14 @@ def select_station(driver, input_id, station_name, index=0):
             EC.presence_of_all_elements_located((By.CLASS_NAME, 'textLocation'))
         )
 
-        for i, station in enumerate(stations):
-            print(f"{i}: {station.text}")
+        # for i, station in enumerate(stations):
+        #     print(f"{i}: {station.text}")
 
         if stations and len(stations) > index:
+            selected_text = stations[index].text
             driver.execute_script("arguments[0].scrollIntoView(true);", stations[index])
             stations[index].click()
-            print(f"Seçilen istasyon ({input_id}): {stations[index].text}")
+            print(f"Seçilen istasyon ({input_id}): {selected_text}")
         else:
             print(f"{station_name} için uygun istasyon bulunamadı.")
     except Exception as e:
