@@ -1,6 +1,5 @@
 FROM python:3.9-slim
 
-# Gerekli sistem kütüphanelerini yükle
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -29,8 +28,8 @@ RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.d
     apt install -y ./google-chrome-stable_current_amd64.deb && \
     rm google-chrome-stable_current_amd64.deb
 
-# Chrome sürümünü al ve uyumlu ChromeDriver'ı indir
-RUN CHROME_VERSION=$(google-chrome-stable --version | awk '{print $3}' | sed 's/\.[0-9]*$//') && \
+# Uyarlanmış ChromeDriver sürümünü indir
+RUN CHROME_VERSION=135.0.7049 && \
     wget https://chromedriver.storage.googleapis.com/$(echo $CHROME_VERSION)/chromedriver_linux64.zip && \
     unzip chromedriver_linux64.zip -d /usr/local/bin && \
     rm chromedriver_linux64.zip
