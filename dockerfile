@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 # Chromium ve gerekli bağımlılıkları yükle
 RUN apt-get update && apt-get install -y \
-    chromium \
+    google-chrome-stable \
     chromium-driver \
     libnss3 \
     libgdk-pixbuf2.0-0 \
@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y \
     libasound2 \
     libxss1 \
     libxtst6
+
 
 # Çalıştırılacak Python ortamı
 WORKDIR /app
