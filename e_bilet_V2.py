@@ -191,6 +191,12 @@ def search_trips(driver):
         )
         driver.execute_script("arguments[0].click();", search_button)
         print("Sefer ara butonuna tıklandı.")
+
+        time.sleep(5)
+        with open("sayfa.html", "w", encoding="utf-8") as f:
+            f.write(driver.page_source)
+        driver.save_screenshot("sayfa.png")
+
         return True
     except Exception as e:
         print("Sefer arama butonu hatası:", e)
