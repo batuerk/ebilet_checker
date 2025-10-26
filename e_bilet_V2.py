@@ -74,7 +74,7 @@ def send_telegram_message(message: str, chat_id: str):
 def get_driver():
     """Headless çalışan bir Chrome driver başlatır."""
     options = uc.ChromeOptions()
-    options.add_argument('--headless')
+    options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-gpu')
     options.add_argument('--disable-dev-shm-usage')
