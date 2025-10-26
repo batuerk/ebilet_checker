@@ -199,17 +199,17 @@ def search_trips(driver):
 def check_trips(driver, chat_id_to_notify: str):
     try:
         # Önce "Sefer bulunamadı" mesajı var mı diye kontrol et
-        try:
-            no_trips_msg = WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, '.textSeferDepartureFirst.mb-0'))
-            )
-            if no_trips_msg:
-                print("🚫 O gün için hiç sefer kalmamış.")
-                send_telegram_message("🚫 Bugün için tüm seferler tamamlanmış veya hiç sefer bulunmuyor.", chat_id_to_notify)
-                return False
-        except TimeoutException:
-            # Mesaj yoksa sefer kontrolüne devam et
-            pass
+        # try:
+        #     no_trips_msg = WebDriverWait(driver, 5).until(
+        #         EC.presence_of_element_located((By.CSS_SELECTOR, '.textSeferDepartureFirst.mb-0'))
+        #     )
+        #     if no_trips_msg:
+        #         print("🚫 O gün için hiç sefer kalmamış.")
+        #         send_telegram_message("🚫 Bugün için tüm seferler tamamlanmış veya hiç sefer bulunmuyor.", chat_id_to_notify)
+        #         return False
+        # except TimeoutException:
+        #     # Mesaj yoksa sefer kontrolüne devam et
+        #     pass
 
         trips = WebDriverWait(driver, 10).until(
             EC.presence_of_all_elements_located((By.XPATH, '//*[starts-with(@id, "gidis")]'))
