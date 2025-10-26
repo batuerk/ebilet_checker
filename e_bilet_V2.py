@@ -74,7 +74,7 @@ def send_telegram_message(message: str, chat_id: str):
 def get_driver():
     """Headless çalışan bir Chrome driver başlatır."""
     options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
+    # options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-gpu')
     options.add_argument('--disable-dev-shm-usage')
@@ -82,7 +82,7 @@ def get_driver():
     options.add_argument('--window-size=1920,1080')
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
     try:
-        driver = uc.Chrome(headless=True, use_subprocess=True, options=options)
+        driver = uc.Chrome(headless=False, use_subprocess=True, options=options)
         driver.set_page_load_timeout(45)
         return driver
     except Exception as e:
@@ -205,17 +205,17 @@ def search_trips(driver):
 def check_trips(driver, chat_id_to_notify: str):
     try:
         # Önce "Sefer bulunamadı" mesajı var mı diye kontrol et
-        # try:
-        #     no_trips_msg = WebDriverWait(driver, 5).until(
-        #         EC.presence_of_element_located((By.CSS_SELECTOR, '.textSeferDepartureFirst.mb-0'))
-        #     )
-        #     if no_trips_msg:
-        #         print("🚫 O gün için hiç sefer kalmamış.")
-        #         send_telegram_message("🚫 Bugün için tüm seferler tamamlanmış veya hiç sefer bulunmuyor.", chat_id_to_notify)
-        #         return False
-        # except TimeoutException:
-        #     # Mesaj yoksa sefer kontrolüne devam et
-        #     pass
+        try:
+            no_trips_msg = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, '.textSeferDepartureFirst.mb-0'))
+            )
+            if no_trips_msg:
+                print("🚫 O gün için hiç sefer kalmamış.")
+                send_telegram_message("🚫 Bugün için tüm seferler tamamlanmış veya hiç sefer bulunmuyor.", chat_id_to_notify)
+                return False
+        except TimeoutException:
+            # Mesaj yoksa sefer kontrolüne devam et
+            pass
 
         trips = WebDriverWait(driver, 10).until(
             EC.presence_of_all_elements_located((By.XPATH, '//*[starts-with(@id, "gidis")]'))
