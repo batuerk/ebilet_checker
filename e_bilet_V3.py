@@ -89,9 +89,9 @@ def get_dynamic_token():
         js_response.raise_for_status()
         
         js_content = js_response.text
-        
+
         token_match = re.search(
-            r'case\s*"TCDD-PROD":.*?fe="(eyJh[a-zA-Z0-9\._-]+)"', 
+            r'case\s*"TCDD-PROD":.*?["\'](eyJh[a-zA-Z0-9\._-]+)["\']', 
             js_content, 
             re.DOTALL
         )
