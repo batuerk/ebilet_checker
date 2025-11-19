@@ -123,9 +123,12 @@ def check_api_and_parse(from_key: str, to_key: str, target_date: datetime):
         'Accept': 'application/json, text/plain, */*',
         'Accept-Language': 'tr',
         'Authorization': dynamic_token,
+        'Cache-Control': 'no-cache',     # Eklendi
         'Connection': 'keep-alive',
         'Content-Type': 'application/json',
         'Origin': 'https://ebilet.tcddtasimacilik.gov.tr',
+        'Pragma': 'no-cache',            # Eklendi
+        'Referer': 'https://ebilet.tcddtasimacilik.gov.tr/', # Güvenlik için eklendi
         'Sec-Fetch-Dest': 'empty',
         'Sec-Fetch-Mode': 'cors',
         'Sec-Fetch-Site': 'same-site',
