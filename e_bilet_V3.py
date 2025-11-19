@@ -62,7 +62,7 @@ def send_telegram_message(message: str, chat_id: str):
     except Exception as e:
         print(f"Telegram mesajı {chat_id} için gönderme hatası:", e)
 
-def get_dynamic_token(session):
+def get_dynamic_token():
     base_url = "https://ebilet.tcddtasimacilik.gov.tr"
     headers = {
         'Accept': '*/*',
@@ -82,7 +82,7 @@ def get_dynamic_token(session):
     
     try:
         print(f"Ana sayfa ({base_url}) alınıyor...")
-        main_page_response = session.get(base_url, headers=headers, timeout=10)
+        main_page_response = requests.get(base_url, headers=headers, timeout=10)
         main_page_response.raise_for_status()
         
         html_content = main_page_response.text
@@ -95,7 +95,7 @@ def get_dynamic_token(session):
         js_file_url = base_url + js_match.group(1)
         print(f"Bulunan JS dosyası: {js_file_url}")
         
-        js_response = session.get(js_file_url, headers=headers, timeout=10)
+        js_response = requests.get(js_file_url, headers=headers, timeout=10)
         js_response.raise_for_status()
         
         js_content = js_response.text
@@ -124,9 +124,7 @@ def get_dynamic_token(session):
 
 def check_api_and_parse(from_key: str, to_key: str, target_date: datetime):
 
-    session = requests.Session()
-
-    dynamic_token = get_dynamic_token(session)
+    dynamic_token = get_dynamic_token()
 
     if not dynamic_token:
         return (False, "❌ HATA: Dinamik Authorization Token'ı alınamadı. Botun 'get_dynamic_token' fonksiyonunu kontrol edin.")
@@ -140,7 +138,6 @@ def check_api_and_parse(from_key: str, to_key: str, target_date: datetime):
         'Content-Type': 'application/json',
         'Origin': 'https://ebilet.tcddtasimacilik.gov.tr',
         'Pragma': 'no-cache',
-        'Referer': 'https://ebilet.tcddtasimacilik.gov.tr/',
         'Sec-Fetch-Dest': 'empty',
         'Sec-Fetch-Mode': 'cors',
         'Sec-Fetch-Site': 'same-site',
@@ -182,7 +179,7 @@ def check_api_and_parse(from_key: str, to_key: str, target_date: datetime):
     }
 
     try:
-        response = session.post(
+        response = requests.post(
             'https://web-api-prod-ytp.tcddtasimacilik.gov.tr/tms/train/train-availability',
             params=params,
             headers=headers,
