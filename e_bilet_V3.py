@@ -64,6 +64,14 @@ def send_telegram_message(message: str, chat_id: str):
 
 def get_dynamic_token():
     base_url = "https://ebilet.tcddtasimacilik.gov.tr"
+
+    cookies = {
+        'mycustomtraceid': 'rBiqDGkeQraP31KpYsnoAg==',
+        '_ga': 'GA1.1.387557717.1763590842',
+        '_ga_3L1HC5XZFP': 'GS2.1.s1763593787$o2$g1$t1763593788$j59$l0$h0',
+        'NSC_ESNS': '4867f7cd-4e3c-191e-9678-905a08103a09_3235061843_0533494347_00000000018394105892',
+    }
+
     headers = {
         'Accept': '*/*',
         'Accept-Language': 'tr-TR,tr;q=0.9',
@@ -82,7 +90,7 @@ def get_dynamic_token():
     
     try:
         print(f"Ana sayfa ({base_url}) alınıyor...")
-        main_page_response = requests.get(base_url, headers=headers, timeout=10)
+        main_page_response = requests.get(base_url, cookies=cookies, headers=headers, timeout=10)
         main_page_response.raise_for_status()
         
         html_content = main_page_response.text
@@ -95,7 +103,7 @@ def get_dynamic_token():
         js_file_url = base_url + js_match.group(1)
         print(f"Bulunan JS dosyası: {js_file_url}")
         
-        js_response = requests.get(js_file_url, headers=headers, timeout=10)
+        js_response = requests.get(js_file_url, cookies=cookies, headers=headers, timeout=10)
         js_response.raise_for_status()
         
         js_content = js_response.text
