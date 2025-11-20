@@ -53,7 +53,7 @@ params = {
 def send_telegram_message(message: str, chat_id: str):
     """(Thread içinden mesaj göndermek için)"""
     url = f'https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendMessage'
-    payload = {'chat_id': chat_id, 'text': message, 'parse_mode': 'Markdown'}
+    payload = {'chat_id': chat_id, 'text': message, 'parse_mode': 'HTML'}
     try:
         response = requests.post(url, data=payload, timeout=10)
         if response.status_code == 200:
@@ -185,12 +185,12 @@ def check_api_and_parse(from_key: str, to_key: str, target_date: datetime):
         sefer_gruplari_listesi = data["trainLegs"][0]["trainAvailabilities"]
         
         date_tr_str = target_date.strftime("%d %B %Y")
-        route_str = f"*{from_key.capitalize()} ➡ {to_key.capitalize()}* | *{date_tr_str}*"
+        route_str = f"<b>{from_key.capitalize()} ➡ {to_key.capitalize()}</b> | <b>{date_tr_str}</b>"
 
         if not sefer_gruplari_listesi:
             return (False, f"ℹ️ Maalesef, {route_str} yönüne uygun sefer bulunamadı.")
 
-        result_message = f"✅ *{route_str}*\n\nBulunan seferler:\n"
+        result_message = f"✅ <b>{route_str}</b>\n\nBulunan seferler:\n"
         
         toplam_tren_sayaci = 0
         bulunan_koltuk = False
@@ -209,7 +209,7 @@ def check_api_and_parse(from_key: str, to_key: str, target_date: datetime):
                     kalkis_saati_str = datetime.fromtimestamp(timestamp_sn).strftime("%H:%M")
                     tren_adi = tren.get("trainName", f"Tren {toplam_tren_sayaci}")
                     
-                    result_message += f"\n*{tren_adi} (Kalkış: {kalkis_saati_str})*:\n"
+                    result_message += f"\n<b>{tren_adi} (Kalkış: {kalkis_saati_str})</b>:\n"
                     
                     vagon_bilgisi_sozlugu = tren["availableFareInfo"][0]
                     vagon_siniflari_listesi = vagon_bilgisi_sozlugu["cabinClasses"]
@@ -232,7 +232,7 @@ def check_api_and_parse(from_key: str, to_key: str, target_date: datetime):
                             bulunan_koltuk = True
                             vagon_bulundu_bu_trende = True
                             minimum_fiyat = vagon["minPrice"]
-                            result_message += f"   ✅ *{sinif_adi}: {uygun_koltuk} adet* (min {minimum_fiyat} TRY)\n"
+                            result_message += f"   ✅ <b>{sinif_adi}: {uygun_koltuk} adet</b> (min {minimum_fiyat} TRY)\n"
                         
                     if not vagon_bulundu_bu_trende:
                          result_message += "   - (Uygun vagonlar dolu)\n"
@@ -242,7 +242,7 @@ def check_api_and_parse(from_key: str, to_key: str, target_date: datetime):
                     result_message += "   - (Bu trenin verisi okunurken hata oluştu)\n"
 
         if not bulunan_koltuk:
-            return (False, f"ℹ️ {route_str} yönüne sefer bulundu, ancak *tüm vagonlar dolu*.")
+            return (False, f"ℹ️ {route_str} yönüne sefer bulundu, ancak <b>tüm vagonlar dolu</b>.")
         else:
             return (True, result_message)
 
