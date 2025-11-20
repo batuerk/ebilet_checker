@@ -56,7 +56,15 @@ def send_telegram_message(message: str, chat_id: str):
     payload = {'chat_id': chat_id, 'text': message, 'parse_mode': 'HTML'}
     try:
         response = requests.post(url, data=payload, timeout=10)
-        if response.status_code == 200:
+        if response.status_code == 400:
+            print(f"HTML formatı hatası algılandı, düz metin olarak tekrar deneniyor...")            
+            payload.pop('parse_mode')
+            retry_response = requests.post(url, data=payload, timeout=10)
+            if retry_response.status_code == 200:
+                 print(f"Telegram mesajı (Düz Metin) {chat_id} için kurtarıldı ve gönderildi.")
+            else:
+                 print(f"Mesaj kurtarılamadı: {retry_response.text}")
+        elif response.status_code == 200:
             print(f"Telegram mesajı {chat_id} için gönderildi.")
         else:
             print(f"Telegram mesajı {chat_id} için gönderilemedi:", response.text)
