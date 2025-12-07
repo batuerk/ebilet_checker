@@ -32,4 +32,4 @@ jobs:
           # Eğer Telegram Token gibi gizli şifrelerin varsa buraya ekleyeceğiz (Açıklamaya bak)
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
-        run: python main.py
+        run: python e_bilet_V3.py
