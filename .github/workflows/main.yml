@@ -30,6 +30,6 @@ jobs:
       - name: Scripti Çalıştır
         env: 
           # Eğer Telegram Token gibi gizli şifrelerin varsa buraya ekleyeceğiz (Açıklamaya bak)
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_API_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python e_bilet_V3.py
