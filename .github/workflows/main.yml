@@ -1,0 +1,35 @@
+name: Bilet Kontrol Botu
+
+on:
+  schedule:
+    # Bu ayar kodu her 15 dakikada bir çalıştırır.
+    # GitHub ücretsiz planda 5 dakikanın altına izin vermeyebilir veya aksatabilir.
+    - cron: '*/15 * * * *'
+  
+  # GitHub sayfasından manuel "Run" butonuna basarak tetiklemek istersen:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Kodları Çek (Checkout)
+        uses: actions/checkout@v3
+
+      - name: Python Kurulumu
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9' # Scriptin uyumlu olduğu versiyon
+
+      - name: Kütüphaneleri Yükle
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Scripti Çalıştır
+        env: 
+          # Eğer Telegram Token gibi gizli şifrelerin varsa buraya ekleyeceğiz (Açıklamaya bak)
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python main.py
