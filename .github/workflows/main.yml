@@ -20,7 +20,7 @@ jobs:
       - name: Python Kurulumu
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9' # Scriptin uyumlu olduğu versiyon
+          python-version: '3.13.6' # Scriptin uyumlu olduğu versiyon
 
       - name: Kütüphaneleri Yükle
         run: |
