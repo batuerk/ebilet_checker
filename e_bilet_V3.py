@@ -210,6 +210,9 @@ def check_api_and_parse(from_key: str, to_key: str, target_date: datetime):
                 
             for j, tren in enumerate(trenler_listesi):
                 toplam_tren_sayaci += 1
+
+                tren_mesaj_taslagi = ""
+                vagon_bulundu_bu_trende = False
                 
                 try:
                     timestamp_ms = tren["segments"][0]["departureTime"]
@@ -217,7 +220,7 @@ def check_api_and_parse(from_key: str, to_key: str, target_date: datetime):
                     kalkis_saati_str = datetime.fromtimestamp(timestamp_sn).strftime("%H:%M")
                     tren_adi = tren.get("trainName", f"Tren {toplam_tren_sayaci}")
                     
-                    result_message += f"\n<b>{tren_adi} (Kalkış: {kalkis_saati_str})</b>:\n"
+                    tren_mesaj_taslagi += f"\n<b>{tren_adi} (Kalkış: {kalkis_saati_str})</b>:\n"
                     
                     vagon_bilgisi_sozlugu = tren["availableFareInfo"][0]
                     vagon_siniflari_listesi = vagon_bilgisi_sozlugu["cabinClasses"]
@@ -225,8 +228,6 @@ def check_api_and_parse(from_key: str, to_key: str, target_date: datetime):
                     if not vagon_siniflari_listesi:
                         result_message += "   - (Vagon bilgisi bulunamadı)\n"
                         continue
-
-                    vagon_bulundu_bu_trende = False
 
                     for vagon in vagon_siniflari_listesi:
                         sinif_adi = vagon["cabinClass"]["name"]
@@ -240,10 +241,10 @@ def check_api_and_parse(from_key: str, to_key: str, target_date: datetime):
                             bulunan_koltuk = True
                             vagon_bulundu_bu_trende = True
                             minimum_fiyat = vagon["minPrice"]
-                            result_message += f"   ✅ <b>{sinif_adi}: {uygun_koltuk} adet</b> (min {minimum_fiyat} TRY)\n"
-                        
-                    if not vagon_bulundu_bu_trende:
-                         result_message += "   - (Uygun vagonlar dolu)\n"
+                            tren_mesaj_taslagi += f"   ✅ <b>{sinif_adi}: {uygun_koltuk} adet</b> (min {minimum_fiyat} TRY)\n"
+
+                    if vagon_bulundu_bu_trende:
+                         result_message += tren_mesaj_taslagi
                          
                 except (KeyError, IndexError, TypeError) as e:
                     print(f"Parsing error for one train: {e}")
