@@ -22,7 +22,6 @@ except locale.Error:
 load_dotenv()
 
 TELEGRAM_API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
-ADMIN_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 monitor_jobs = {}
 
