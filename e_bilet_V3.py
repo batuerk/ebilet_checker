@@ -279,17 +279,91 @@ def monitoring_loop(chat_id: str, stop_event: threading.Event, from_key: str, to
         chat_id
     )
     
+    # Önceki durumu saklamak için dictionary
+    previous_state = {}
+    first_check = True
+    
     while not stop_event.is_set():
         print(f"API Kontrol ediliyor ({chat_id})...")
         
         found, message = check_api_and_parse(from_key, to_key, target_date)
         
+        # Şu anki durumu parse et (sefer ismi ve koltuk sayısı)
+        current_state = {}
+        
         if found:
-            print(f"BOŞ YER BULUNDU! ({chat_id})")
-            send_telegram_message("🚨 BİLET BULUNDU! 🚨\n\n" + message, chat_id)
-            # İsteğe bağlı: Bulunca dursun
-            # stop_event.set() 
-            # break
+            # Mesajdan tren isimlerini ve koltuk sayılarını çıkar
+            lines = message.split('\n')
+            current_train = None
+            current_train_total = 0
+            
+            for line in lines:
+                # Tren ismini yakala (örn: "YHT İZMİR MAVI TRENİ (Kalkış: 09:00)")
+                if line.strip().startswith('<b>') and 'Kalkış:' in line:
+                    # Önceki treni kaydet
+                    if current_train:
+                        current_state[current_train] = current_train_total
+                    
+                    # Yeni tren başladı
+                    train_info = line.split('(Kalkış:')[0].strip()
+                    train_info = train_info.replace('<b>', '').replace('</b>', '')
+                    current_train = train_info
+                    current_train_total = 0
+                
+                # Koltuk sayısını yakala (örn: "✅ EKONOMI: 15 adet (min 245.0 TRY)")
+                elif '✅' in line and 'adet' in line:
+                    try:
+                        seat_count = int(line.split(':')[1].split('adet')[0].strip())
+                        current_train_total += seat_count
+                    except:
+                        pass
+            
+            # Son treni de kaydet
+            if current_train:
+                current_state[current_train] = current_train_total
+        
+        # İlk kontrolde her zaman mesaj at
+        if first_check:
+            if found:
+                print(f"İLK KONTROL - BOŞ YER BULUNDU! ({chat_id})")
+                send_telegram_message("🎫 İLK KONTROL - BİLET DURUMU:\n\n" + message, chat_id)
+                previous_state = current_state.copy()
+            else:
+                print(f"İLK KONTROL - BOŞ YER YOK ({chat_id})")
+                send_telegram_message("ℹ️ İlk kontrol tamamlandı. Şu anda uygun yer bulunmuyor. Yer açıldığında bildirim alacaksınız.", chat_id)
+            first_check = False
+        
+        # Sonraki kontrollerde sadece değişiklik varsa mesaj at
+        else:
+            if found:
+                # Yeni yer açıldı mı kontrol et
+                changes_detected = False
+                change_message = "🚨 YENİ YER AÇILDI! 🚨\n\n"
+                
+                for train_name, current_seats in current_state.items():
+                    previous_seats = previous_state.get(train_name, 0)
+                    
+                    # Yeni sefer eklendi veya koltuk sayısı arttı
+                    if current_seats > previous_seats:
+                        changes_detected = True
+                        if previous_seats == 0:
+                            change_message += f"🆕 <b>{train_name}</b>: YENİ SEFER - {current_seats} koltuk bulundu!\n"
+                        else:
+                            change_message += f"📈 <b>{train_name}</b>: {previous_seats} → {current_seats} koltuk (+{current_seats - previous_seats})\n"
+                
+                if changes_detected:
+                    print(f"DEĞİŞİKLİK TESPİT EDİLDİ! ({chat_id})")
+                    change_message += "\n" + message
+                    send_telegram_message(change_message, chat_id)
+                    previous_state = current_state.copy()
+                else:
+                    print(f"Değişiklik yok, mesaj atılmadı ({chat_id})")
+            
+            # Daha önce yer vardı ama şimdi yok
+            elif previous_state:
+                print(f"TÜM YERLER DOLDU! ({chat_id})")
+                send_telegram_message("❌ Daha önce uygun olan yerler doldu. Yeni yer açılmasını bekliyorum...", chat_id)
+                previous_state = {}
         
         print(f"{interval_seconds} saniye bekleniyor...")
         if stop_event.wait(interval_seconds):
@@ -465,7 +539,7 @@ async def button_callback(update: Update, context: CallbackContext):
                     return
 
                 print(f"Callback -> monitor_api_loop: {chat_id}, {from_station_key}, {to_station_key}, {target_date}")
-                check_interval = 30
+                check_interval = 120
                 stop_event = threading.Event()
                 monitor_thread = threading.Thread(
                     target=monitoring_loop,
