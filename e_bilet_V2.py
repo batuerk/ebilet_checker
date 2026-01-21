@@ -158,7 +158,7 @@ def get_available_destinations(from_station_id: int):
     destinations = []
     for dest_id in from_station['pairs']:
         dest_station = get_station_by_id(dest_id)
-        if dest_station and dest_station.get('ticketSaleActive'):
+        if dest_station:  # Hedef istasyonu varsa ekle
             destinations.append(dest_station)
     
     # İsme göre sırala
@@ -166,21 +166,41 @@ def get_available_destinations(from_station_id: int):
     return destinations
 
 def get_active_stations():
-    """Bilet satışı aktif olan tüm istasyonları döndürür"""
+    """Varış yeri olan tüm istasyonları döndürür (pairs listesi dolu olanlar)"""
     active_stations = [
         station for station in STATIONS_DATA 
-        if station.get('ticketSaleActive') and station.get('pairs')
+        if station.get('pairs')  # Sadece hedef istasyonları olan istasyonları dahil et
     ]
     # İsme göre sırala
     active_stations.sort(key=lambda x: x['name'])
     return active_stations
 
+def normalize_turkish(text: str) -> str:
+    """
+    Türkçe karakterleri ASCII karşılıklarına dönüştürür.
+    Bu sayede 'Eskisehir' yazarak 'Eskişehir' bulunabilir.
+    """
+    turkish_map = {
+        'ş': 's', 'Ş': 's',
+        'ı': 'i', 'İ': 'i',
+        'ğ': 'g', 'Ğ': 'g',
+        'ü': 'u', 'Ü': 'u',
+        'ö': 'o', 'Ö': 'o',
+        'ç': 'c', 'Ç': 'c',
+        'I': 'i',  # Türkçe'de büyük I -> küçük ı, ama aramada i olarak eşleşsin
+    }
+    result = text.lower()
+    for turkish_char, ascii_char in turkish_map.items():
+        result = result.replace(turkish_char, ascii_char)
+    return result
+
 def search_stations(query: str, from_station_id: int = None) -> list:
     """
     İstasyonları arar. 
     from_station_id verilirse sadece o istasyondan gidilebilecek hedefleri arar.
+    Türkçe karakter duyarsız arama yapar.
     """
-    query_lower = query.lower().strip()
+    query_normalized = normalize_turkish(query.strip())
     
     if from_station_id:
         # Varış istasyonlarında ara
@@ -189,11 +209,11 @@ def search_stations(query: str, from_station_id: int = None) -> list:
         # Kalkış istasyonlarında ara
         stations = get_active_stations()
     
-    # Arama yap
+    # Arama yap - normalize edilmiş karşılaştırma
     results = []
     for station in stations:
-        station_name_lower = station['name'].lower()
-        if query_lower in station_name_lower:
+        station_name_normalized = normalize_turkish(station['name'])
+        if query_normalized in station_name_normalized:
             results.append(station)
     
     # En fazla 10 sonuç döndür (Telegram buton limiti için)
