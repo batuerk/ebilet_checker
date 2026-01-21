@@ -26,12 +26,13 @@ ADMIN_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 monitor_jobs = {}
 
+# Kullanıcı durumları (arama state'i için)
+# Format: {chat_id: {"state": "waiting_from" | "waiting_to", "action": "check" | "monitor", "from_station_id": int}}
+user_states = {}
+
 # Dinamik istasyon verisi (global değişken)
 STATIONS_DATA = []
 STATIONS_BY_ID = {}
-
-# Arama sonuçları depolaması
-search_results = {}  # {chat_id: {"query": "", "results": [], "action": ""}}
 
 params = {
     'environment': 'dev',
@@ -174,25 +175,57 @@ def get_active_stations():
     active_stations.sort(key=lambda x: x['name'])
     return active_stations
 
-def search_stations(query: str, from_station_id: int = None):
-    """Verilen sorguya göre istasyonları arar"""
+def search_stations(query: str, from_station_id: int = None) -> list:
+    """
+    İstasyonları arar. 
+    from_station_id verilirse sadece o istasyondan gidilebilecek hedefleri arar.
+    """
     query_lower = query.lower().strip()
     
     if from_station_id:
-        # Varış istasyonları ara
+        # Varış istasyonlarında ara
         stations = get_available_destinations(from_station_id)
     else:
-        # Kalkış istasyonları ara
+        # Kalkış istasyonlarında ara
         stations = get_active_stations()
     
-    # İsim veya şehir koduna göre ara
-    filtered = [
-        station for station in stations
-        if query_lower in station['name'].lower() or 
-           query_lower in station.get('city', {}).get('name', '').lower()
-    ]
+    # Arama yap
+    results = []
+    for station in stations:
+        station_name_lower = station['name'].lower()
+        if query_lower in station_name_lower:
+            results.append(station)
     
-    return filtered
+    # En fazla 10 sonuç döndür (Telegram buton limiti için)
+    return results[:10]
+
+def create_search_result_keyboard(stations: list, action: str, from_station_id: int = None) -> InlineKeyboardMarkup:
+    """Arama sonuçlarından buton klavyesi oluşturur"""
+    keyboard = []
+    row = []
+    
+    if from_station_id:
+        prefix = f"to_{action}_{from_station_id}"
+    else:
+        prefix = f"from_{action}"
+    
+    for station in stations:
+        station_name = station['name'][:25]  # Uzun isimleri kısalt
+        callback_data = f"{prefix}_{station['id']}"
+        
+        row.append(InlineKeyboardButton(station_name, callback_data=callback_data))
+        
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    
+    if row:
+        keyboard.append(row)
+    
+    # İptal butonu ekle
+    keyboard.append([InlineKeyboardButton("❌ İptal", callback_data="cancel_search")])
+    
+    return InlineKeyboardMarkup(keyboard)
 
 def check_api_and_parse(from_id: int, to_id: int, target_date: datetime):
     """API'yi kontrol eder ve bilet durumunu parse eder"""
@@ -422,61 +455,6 @@ def monitoring_loop(chat_id: str, stop_event: threading.Event, from_id: int, to_
         del monitor_jobs[chat_id]
         print(f"İzleme işi listeden kaldırıldı ({chat_id}).")
 
-def create_station_keyboard(action: str, from_station_id: int = None, search_query: str = None) -> InlineKeyboardMarkup:
-    """Dinamik istasyon klavyesi oluşturur"""
-    keyboard = []
-    row = []
-    
-    if search_query:
-        # Arama sonuçlarını göster
-        stations = search_stations(search_query, from_station_id)
-    elif from_station_id:
-        # Varış istasyonları
-        stations = get_available_destinations(from_station_id)
-        prefix = f"to_{action}"
-    else:
-        # Kalkış istasyonları
-        stations = get_active_stations()
-        prefix = f"from_{action}"
-    
-    # Eğer arama sorgusu varsa, ona özel prefix kullan
-    if search_query:
-        if from_station_id:
-            prefix = f"search_to_{action}_{from_station_id}"  # from_station_id dahil
-        else:
-            prefix = f"search_from_{action}"
-    
-    for station in stations[:20]:  # Maksimum 20 sonuç göster
-        station_name = station['name'][:25]  # Uzun isimleri kısalt
-        callback_data = f"{prefix}_{station['id']}"
-        
-        row.append(InlineKeyboardButton(station_name, callback_data=callback_data))
-        
-        if len(row) == 2:
-            keyboard.append(row)
-            row = []
-    
-    if row:
-        keyboard.append(row)
-    
-    # Arama butonu ekle (hem kalkış hem varış için)
-    if search_query:
-        keyboard.append([InlineKeyboardButton("🔍 Yeni Arama", callback_data=f"newsearch_{'to' if from_station_id else 'from'}_{action}_{from_station_id if from_station_id else '0'}")])
-    elif from_station_id:
-        # Varış istasyonu seçimi - arama butonu ekle
-        keyboard.append([InlineKeyboardButton("🔍 Varış İstasyonu Ara", callback_data=f"search_input_to_{action}_{from_station_id}")])
-    else:
-        # Kalkış istasyonu seçimi - arama butonu ekle
-        keyboard.append([InlineKeyboardButton("🔍 Kalkış İstasyonu Ara", callback_data=f"search_input_from_{action}")])
-    
-    if not stations and search_query:
-        keyboard = [[InlineKeyboardButton("❌ Sonuç bulunamadı", callback_data="error")],
-                    [InlineKeyboardButton("🔍 Yeni Arama", callback_data=f"newsearch_{'to' if from_station_id else 'from'}_{action}_{from_station_id if from_station_id else '0'}")]]
-    elif not keyboard:
-        keyboard.append([InlineKeyboardButton("İstasyon bulunamadı", callback_data="error")])
-        
-    return InlineKeyboardMarkup(keyboard)
-
 def create_date_keyboard(action: str, from_station_id: int, to_station_id: int) -> InlineKeyboardMarkup:
     """Tarih seçim klavyesi"""
     keyboard = []
@@ -524,25 +502,32 @@ async def start(update: Update, context: CallbackContext):
 
 async def check_command(update: Update, context: CallbackContext):
     """/check komutu"""
+    chat_id = str(update.message.chat_id)
+    
     if not STATIONS_DATA:
         await update.message.reply_text("⏳ İstasyonlar yükleniyor, lütfen bekleyin...")
         if not load_stations():
             await update.message.reply_text("❌ İstasyonlar yüklenemedi. Lütfen daha sonra tekrar deneyin.")
             return
     
-    context.user_data['action'] = 'check'
-    context.user_data['from_station_id'] = None
+    # Kullanıcı durumunu kaydet
+    user_states[chat_id] = {
+        "state": "waiting_from",
+        "action": "check",
+        "from_station_id": None
+    }
     
-    keyboard = create_station_keyboard(action="check")
     await update.message.reply_text(
-        "Lütfen *kalkış* istasyonunu seçin veya 🔍 ile arayın:", 
-        reply_markup=keyboard,
+        "🔍 *Kalkış İstasyonu Araması*\n\n"
+        "Lütfen kalkış istasyonu adını yazın (en az 3 karakter).\n"
+        "Örnek: `Ankara`, `İstanbul`, `İzmir`",
         parse_mode='Markdown'
     )
 
 async def monitor_command(update: Update, context: CallbackContext):
     """/monitor komutu"""
     chat_id = str(update.message.chat_id)
+    
     if chat_id in monitor_jobs:
         await update.message.reply_text("Zaten aktif bir izlemeniz var. Durdurmak için /stop yazın.")
         return
@@ -553,13 +538,17 @@ async def monitor_command(update: Update, context: CallbackContext):
             await update.message.reply_text("❌ İstasyonlar yüklenemedi. Lütfen daha sonra tekrar deneyin.")
             return
     
-    context.user_data['action'] = 'monitor'
-    context.user_data['from_station_id'] = None
+    # Kullanıcı durumunu kaydet
+    user_states[chat_id] = {
+        "state": "waiting_from",
+        "action": "monitor",
+        "from_station_id": None
+    }
     
-    keyboard = create_station_keyboard(action="monitor")
     await update.message.reply_text(
-        "Lütfen *kalkış* istasyonunu seçin veya 🔍 ile arayın:", 
-        reply_markup=keyboard,
+        "🔍 *Kalkış İstasyonu Araması*\n\n"
+        "Lütfen kalkış istasyonu adını yazın (en az 3 karakter).\n"
+        "Örnek: `Ankara`, `İstanbul`, `İzmir`",
         parse_mode='Markdown'
     )
 
@@ -575,63 +564,6 @@ async def stop_command(update: Update, context: CallbackContext):
     else:
         await update.message.reply_text("Aktif bir izlemeniz bulunmuyor.")
 
-async def search_input_handler(update: Update, context: CallbackContext):
-    """Arama sorgusu için metin girişini işler"""
-    chat_id = str(update.message.chat_id)
-    query = update.message.text.strip()
-    
-    print(f"[DEBUG] Metin alındı: '{query}' | user_data: {context.user_data}")
-    
-    # Sadece arama bekliyorsak işle
-    if not context.user_data.get('waiting_for_search'):
-        print(f"[DEBUG] Arama beklenmiyordu, mesaj yok sayıldı")
-        return
-    
-    if not query or len(query) < 2:
-        await update.message.reply_text("Lütfen en az 2 karakter girin.")
-        return
-    
-    # Arama sonuçlarını bul
-    if 'action' in context.user_data:
-        action = context.user_data['action']
-        from_station_id = context.user_data.get('from_station_id')
-        
-        # Arama tamamlandı, flag'i sıfırla
-        context.user_data['waiting_for_search'] = False
-        
-        results = search_stations(query, from_station_id)
-        
-        if results:
-            keyboard = create_station_keyboard(
-                action=action,
-                from_station_id=from_station_id,
-                search_query=query
-            )
-            
-            header = f"*{len(results)} sonuç bulundu:*\n\n"
-            if from_station_id:
-                from_station = get_station_by_id(from_station_id)
-                header = f"Kalkış: *{from_station['name']}*\n\n*{len(results)} varış istasyonu bulundu:*\n\n"
-            
-            await update.message.reply_text(
-                header + "\n".join([f"• {s['name']}" for s in results[:10]]),
-                reply_markup=keyboard,
-                parse_mode='Markdown'
-            )
-        else:
-            await update.message.reply_text(f"❌ '*{query}*' için sonuç bulunamadı. Lütfen başka bir ad deneyin.", parse_mode='Markdown')
-            # Arama butonu için doğru callback_data oluştur
-            if from_station_id:
-                search_callback = f"search_input_to_{action}_{from_station_id}"
-            else:
-                search_callback = f"search_input_from_{action}"
-            keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔍 Tekrar Ara", callback_data=search_callback)]
-            ])
-            await update.message.reply_text("Arama yapmak ister misiniz?", reply_markup=keyboard)
-    else:
-        await update.message.reply_text("Seçim konteksti kaybedildi. Lütfen /check veya /monitor komutundan başlayın.")
-
 async def button_callback(update: Update, context: CallbackContext):
     """Inline button callback handler"""
     query = update.callback_query
@@ -640,108 +572,32 @@ async def button_callback(update: Update, context: CallbackContext):
     chat_id = str(query.message.chat_id)
     
     try:
+        # İptal butonu kontrolü
+        if query.data == "cancel_search":
+            if chat_id in user_states:
+                del user_states[chat_id]
+            await query.edit_message_text("❌ İşlem iptal edildi.")
+            return
+        
         parts = query.data.split('_')
         prefix = parts[0]
-
-        # Arama girişi (kalkış veya varış için)
-        if query.data.startswith('search_input_'):
-            parts_search = query.data.split('_')
-            search_type = parts_search[2]  # 'from' veya 'to'
-            action = parts_search[3]
-            
-            context.user_data['action'] = action
-            context.user_data['search_type'] = search_type
-            context.user_data['waiting_for_search'] = True  # Arama bekliyoruz
-            print(f"[DEBUG] Arama modu aktif: action={action}, search_type={search_type}")
-            
-            if search_type == 'to' and len(parts_search) > 4:
-                from_station_id = int(parts_search[4])
-                context.user_data['from_station_id'] = from_station_id
-                from_station = get_station_by_id(from_station_id)
-                await query.message.reply_text(
-                    f"Kalkış: *{from_station['name']}*\n\n"
-                    "Lütfen varış istasyonu aramak için istasyon adı yazın (en az 2 karakter):\n\n"
-                    "Örnek: İstanbul, Ankara, Konya vb.",
-                    parse_mode='Markdown'
-                )
-            else:
-                context.user_data['from_station_id'] = None
-                await query.message.reply_text(
-                    "Lütfen kalkış istasyonu aramak için istasyon adı yazın (en az 2 karakter):\n\n"
-                    "Örnek: İstanbul, Ankara, Konya vb."
-                )
-            return
-
-        # Yeni arama
-        if prefix == 'newsearch':
-            station_type = parts[1]
-            action = parts[2]
-            from_station_id = int(parts[3]) if len(parts) > 3 and parts[3] and parts[3] != '0' else None
-            
-            context.user_data['action'] = action
-            context.user_data['from_station_id'] = from_station_id
-            context.user_data['waiting_for_search'] = True  # Arama bekliyoruz
-            print(f"[DEBUG] Yeni arama modu aktif: action={action}, from_station_id={from_station_id}")
-            
-            if from_station_id:
-                from_station = get_station_by_id(from_station_id)
-                await query.message.reply_text(
-                    f"Kalkış: *{from_station['name']}*\n\n"
-                    "Lütfen varış istasyonu aramak için istasyon adı yazın (en az 2 karakter):\n\n"
-                    "Örnek: İstanbul, Ankara, Konya vb.",
-                    parse_mode='Markdown'
-                )
-            else:
-                await query.message.reply_text(
-                    "Lütfen kalkış istasyonu aramak için istasyon adı yazın (en az 2 karakter):\n\n"
-                    "Örnek: İstanbul, Ankara, Konya vb."
-                )
-            return
-
-        # Arama sonuçlarından seçim
-        # Format: search_from_{action}_{station_id} veya search_to_{action}_{from_station_id}_{to_station_id}
-        if prefix == 'search':
-            station_type = parts[1]  # 'from' veya 'to'
-            action = parts[2]
-            
-            if station_type == 'from':
-                # Kalkış istasyonu seçildi: search_from_{action}_{station_id}
-                station_id = int(parts[3])
-                from_station = get_station_by_id(station_id)
-                context.user_data['from_station_id'] = station_id
-                
-                keyboard = create_station_keyboard(action=action, from_station_id=station_id)
-                await query.edit_message_text(
-                    text=f"Kalkış: *{from_station['name']}*\n\nŞimdi *varış* istasyonunu seçin:",
-                    reply_markup=keyboard,
-                    parse_mode='Markdown'
-                )
-            elif station_type == 'to':
-                # Varış istasyonu seçildi: search_to_{action}_{from_station_id}_{to_station_id}
-                from_station_id = int(parts[3])
-                to_station_id = int(parts[4])
-                
-                from_station = get_station_by_id(from_station_id)
-                to_station = get_station_by_id(to_station_id)
-                
-                keyboard = create_date_keyboard(action=action, from_station_id=from_station_id, to_station_id=to_station_id)
-                await query.edit_message_text(
-                    text=f"Kalkış: *{from_station['name']}*\nVarış: *{to_station['name']}*\n\nLütfen bir *tarih* seçin:",
-                    reply_markup=keyboard,
-                    parse_mode='Markdown'
-                )
-            return
 
         if prefix == 'from':
             action = parts[1]
             from_station_id = int(parts[2])
             from_station = get_station_by_id(from_station_id)
-            context.user_data['from_station_id'] = from_station_id
             
-            keyboard = create_station_keyboard(action=action, from_station_id=from_station_id)
+            # Varış istasyonu araması için durum kaydet
+            user_states[chat_id] = {
+                "state": "waiting_to",
+                "action": action,
+                "from_station_id": from_station_id
+            }
+            
             await query.edit_message_text(
-                text=f"Kalkış: *{from_station['name']}*\n\nŞimdi *varış* istasyonunu seçin:",
-                reply_markup=keyboard,
+                text=f"✅ Kalkış: *{from_station['name']}*\n\n"
+                     f"🔍 *Varış İstasyonu Araması*\n\n"
+                     f"Lütfen varış istasyonu adını yazın (en az 3 karakter).",
                 parse_mode='Markdown'
             )
         
@@ -750,10 +606,14 @@ async def button_callback(update: Update, context: CallbackContext):
             from_station_id = int(parts[2])
             to_station_id = int(parts[3])
             
+            # Kullanıcı durumunu temizle
+            if chat_id in user_states:
+                del user_states[chat_id]
+            
             from_station = get_station_by_id(from_station_id)
             to_station = get_station_by_id(to_station_id)
             
-            keyboard = create_date_keyboard(action=action, from_station=from_station_id, to_station=to_station_id)
+            keyboard = create_date_keyboard(action=action, from_station_id=from_station_id, to_station_id=to_station_id)
             await query.edit_message_text(
                 text=f"Kalkış: *{from_station['name']}*\nVarış: *{to_station['name']}*\n\nLütfen bir *tarih* seçin:",
                 reply_markup=keyboard,
@@ -803,6 +663,73 @@ async def button_callback(update: Update, context: CallbackContext):
         print(f"Callback hatası: {e}")
         await query.message.reply_text(f"Buton işlemi sırasında hata: {e}")
 
+async def text_message_handler(update: Update, context: CallbackContext):
+    """Kullanıcı metin mesajlarını işler (istasyon araması)"""
+    chat_id = str(update.message.chat_id)
+    
+    # Kullanıcı arama modunda değilse işleme
+    if chat_id not in user_states:
+        return
+    
+    user_state = user_states[chat_id]
+    search_query = update.message.text.strip()
+    
+    # Minimum 3 karakter kontrolü
+    if len(search_query) < 3:
+        await update.message.reply_text(
+            "⚠️ Lütfen en az 3 karakter girin.\n"
+            "Örnek: `Ank`, `İst`, `İzm`",
+            parse_mode='Markdown'
+        )
+        return
+    
+    action = user_state["action"]
+    state = user_state["state"]
+    
+    if state == "waiting_from":
+        # Kalkış istasyonu araması
+        results = search_stations(search_query)
+        
+        if not results:
+            await update.message.reply_text(
+                f"❌ *'{search_query}'* için istasyon bulunamadı.\n\n"
+                "Lütfen farklı bir arama terimi deneyin.",
+                parse_mode='Markdown'
+            )
+            return
+        
+        keyboard = create_search_result_keyboard(results, action)
+        await update.message.reply_text(
+            f"🔍 *'{search_query}'* için {len(results)} sonuç bulundu:\n\n"
+            "Lütfen kalkış istasyonunu seçin:",
+            reply_markup=keyboard,
+            parse_mode='Markdown'
+        )
+    
+    elif state == "waiting_to":
+        # Varış istasyonu araması
+        from_station_id = user_state["from_station_id"]
+        from_station = get_station_by_id(from_station_id)
+        
+        results = search_stations(search_query, from_station_id)
+        
+        if not results:
+            await update.message.reply_text(
+                f"❌ *'{search_query}'* için varış istasyonu bulunamadı.\n\n"
+                f"*{from_station['name']}* istasyonundan gidilebilecek farklı bir istasyon arayın.",
+                parse_mode='Markdown'
+            )
+            return
+        
+        keyboard = create_search_result_keyboard(results, action, from_station_id)
+        await update.message.reply_text(
+            f"✅ Kalkış: *{from_station['name']}*\n\n"
+            f"🔍 *'{search_query}'* için {len(results)} sonuç bulundu:\n\n"
+            "Lütfen varış istasyonunu seçin:",
+            reply_markup=keyboard,
+            parse_mode='Markdown'
+        )
+
 def main():
     """Bot başlatma"""
     print("🚂 TCDD Bilet Takip Botu başlatılıyor...")
@@ -819,10 +746,11 @@ def main():
     app.add_handler(CommandHandler("monitor", monitor_command))
     app.add_handler(CommandHandler("stop", stop_command))
     
-    app.add_handler(CallbackQueryHandler(button_callback, pattern='^(from_|to_|date_|search|newsearch)'))
+    # Callback handler - cancel_search pattern'i de ekle
+    app.add_handler(CallbackQueryHandler(button_callback, pattern='^(from_|to_|date_|cancel_search)'))
     
-    # Metin mesajları işle (arama sorguları için)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search_input_handler))
+    # Metin mesajları için handler (komut olmayan mesajlar)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
 
     print("✅ Bot çalışıyor...")
     app.run_polling()
