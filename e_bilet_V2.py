@@ -580,6 +580,13 @@ async def search_input_handler(update: Update, context: CallbackContext):
     chat_id = str(update.message.chat_id)
     query = update.message.text.strip()
     
+    print(f"[DEBUG] Metin alındı: '{query}' | user_data: {context.user_data}")
+    
+    # Sadece arama bekliyorsak işle
+    if not context.user_data.get('waiting_for_search'):
+        print(f"[DEBUG] Arama beklenmiyordu, mesaj yok sayıldı")
+        return
+    
     if not query or len(query) < 2:
         await update.message.reply_text("Lütfen en az 2 karakter girin.")
         return
@@ -588,6 +595,9 @@ async def search_input_handler(update: Update, context: CallbackContext):
     if 'action' in context.user_data:
         action = context.user_data['action']
         from_station_id = context.user_data.get('from_station_id')
+        
+        # Arama tamamlandı, flag'i sıfırla
+        context.user_data['waiting_for_search'] = False
         
         results = search_stations(query, from_station_id)
         
@@ -610,8 +620,13 @@ async def search_input_handler(update: Update, context: CallbackContext):
             )
         else:
             await update.message.reply_text(f"❌ '*{query}*' için sonuç bulunamadı. Lütfen başka bir ad deneyin.", parse_mode='Markdown')
+            # Arama butonu için doğru callback_data oluştur
+            if from_station_id:
+                search_callback = f"search_input_to_{action}_{from_station_id}"
+            else:
+                search_callback = f"search_input_from_{action}"
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔍 Tekrar Ara", callback_data=f"search_input_{action}")]
+                [InlineKeyboardButton("🔍 Tekrar Ara", callback_data=search_callback)]
             ])
             await update.message.reply_text("Arama yapmak ister misiniz?", reply_markup=keyboard)
     else:
@@ -636,6 +651,8 @@ async def button_callback(update: Update, context: CallbackContext):
             
             context.user_data['action'] = action
             context.user_data['search_type'] = search_type
+            context.user_data['waiting_for_search'] = True  # Arama bekliyoruz
+            print(f"[DEBUG] Arama modu aktif: action={action}, search_type={search_type}")
             
             if search_type == 'to' and len(parts_search) > 4:
                 from_station_id = int(parts_search[4])
@@ -659,15 +676,26 @@ async def button_callback(update: Update, context: CallbackContext):
         if prefix == 'newsearch':
             station_type = parts[1]
             action = parts[2]
-            from_station_id = int(parts[3]) if len(parts) > 3 and parts[3] else None
+            from_station_id = int(parts[3]) if len(parts) > 3 and parts[3] and parts[3] != '0' else None
             
             context.user_data['action'] = action
             context.user_data['from_station_id'] = from_station_id
+            context.user_data['waiting_for_search'] = True  # Arama bekliyoruz
+            print(f"[DEBUG] Yeni arama modu aktif: action={action}, from_station_id={from_station_id}")
             
-            await query.message.reply_text(
-                "Lütfen arama yapmak için istasyon adı yazın (en az 2 karakter):\n\n"
-                "Örnek: İstanbul, Ankara, Konya vb."
-            )
+            if from_station_id:
+                from_station = get_station_by_id(from_station_id)
+                await query.message.reply_text(
+                    f"Kalkış: *{from_station['name']}*\n\n"
+                    "Lütfen varış istasyonu aramak için istasyon adı yazın (en az 2 karakter):\n\n"
+                    "Örnek: İstanbul, Ankara, Konya vb.",
+                    parse_mode='Markdown'
+                )
+            else:
+                await query.message.reply_text(
+                    "Lütfen kalkış istasyonu aramak için istasyon adı yazın (en az 2 karakter):\n\n"
+                    "Örnek: İstanbul, Ankara, Konya vb."
+                )
             return
 
         # Arama sonuçlarından seçim
