@@ -48,4 +48,4 @@ RUN pip install -r requirements.txt
 COPY . .
 
 # Uygulamayı başlat
-CMD ["python3", "e_bilet_V3.py"]
+CMD ["python3", "e_bilet_V2.py"]
