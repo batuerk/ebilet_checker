@@ -1,7 +1,9 @@
 FROM python:3.9-slim
 
-# Gerekli sistem kütüphanelerini yükle
+# Locale ve timezone için gerekli paketler
 RUN apt-get update && apt-get install -y \
+    locales \
+    tzdata \
     wget \
     gnupg \
     unzip \
@@ -22,19 +24,21 @@ RUN apt-get update && apt-get install -y \
     libxss1 \
     apt-transport-https \
     ca-certificates \
-    libcurl4-openssl-dev
+    libcurl4-openssl-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Google Chrome'u indir ve kur
-#RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
-#    apt install -y ./google-chrome-stable_current_amd64.deb && \
-#    rm google-chrome-stable_current_amd64.deb
+# Timezone: Europe/Istanbul
+ENV TZ=Europe/Istanbul
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# Chrome sürümünü al ve uyumlu ChromeDriver'ı indir
-#RUN CHROME_VERSION=135.0.7049.114 && \
-#    echo "Chrome Version: $CHROME_VERSION" && \
-#    wget https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chromedriver-linux64.zip && \
-#    unzip chromedriver-linux64.zip -d /usr/local/bin && \
-#    rm chromedriver-linux64.zip
+# Locale: Turkish (UTF-8)
+RUN sed -i 's/# tr_TR.UTF-8 UTF-8/tr_TR.UTF-8 UTF-8/' /etc/locale.gen \
+    && locale-gen
+
+# Locale environment değişkenleri
+ENV LANG=tr_TR.UTF-8 \
+    LANGUAGE=tr_TR:tr \
+    LC_ALL=tr_TR.UTF-8
 
 # Python bağımlılıklarını yükle
 COPY requirements.txt .
