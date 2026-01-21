@@ -441,7 +441,10 @@ def create_station_keyboard(action: str, from_station_id: int = None, search_que
     
     # Eğer arama sorgusu varsa, ona özel prefix kullan
     if search_query:
-        prefix = f"search_to_{action}" if from_station_id else f"search_from_{action}"
+        if from_station_id:
+            prefix = f"search_to_{action}_{from_station_id}"  # from_station_id dahil
+        else:
+            prefix = f"search_from_{action}"
     
     for station in stations[:20]:  # Maksimum 20 sonuç göster
         station_name = station['name'][:25]  # Uzun isimleri kısalt
@@ -456,15 +459,19 @@ def create_station_keyboard(action: str, from_station_id: int = None, search_que
     if row:
         keyboard.append(row)
     
-    # Arama butonu ekle
+    # Arama butonu ekle (hem kalkış hem varış için)
     if search_query:
-        keyboard.append([InlineKeyboardButton("🔍 Yeni Arama", callback_data=f"newsearch_{'to' if from_station_id else 'from'}_{action}_{from_station_id if from_station_id else ''}")])
-    elif not from_station_id:
-        keyboard.append([InlineKeyboardButton("🔍 İstasyon Ara", callback_data=f"search_input_{action}")])
+        keyboard.append([InlineKeyboardButton("🔍 Yeni Arama", callback_data=f"newsearch_{'to' if from_station_id else 'from'}_{action}_{from_station_id if from_station_id else '0'}")])
+    elif from_station_id:
+        # Varış istasyonu seçimi - arama butonu ekle
+        keyboard.append([InlineKeyboardButton("🔍 Varış İstasyonu Ara", callback_data=f"search_input_to_{action}_{from_station_id}")])
+    else:
+        # Kalkış istasyonu seçimi - arama butonu ekle
+        keyboard.append([InlineKeyboardButton("🔍 Kalkış İstasyonu Ara", callback_data=f"search_input_from_{action}")])
     
     if not stations and search_query:
         keyboard = [[InlineKeyboardButton("❌ Sonuç bulunamadı", callback_data="error")],
-                    [InlineKeyboardButton("🔍 Yeni Arama", callback_data=f"newsearch_{'to' if from_station_id else 'from'}_{action}_{from_station_id if from_station_id else ''}")]]
+                    [InlineKeyboardButton("🔍 Yeni Arama", callback_data=f"newsearch_{'to' if from_station_id else 'from'}_{action}_{from_station_id if from_station_id else '0'}")]]
     elif not keyboard:
         keyboard.append([InlineKeyboardButton("İstasyon bulunamadı", callback_data="error")])
         
@@ -621,16 +628,31 @@ async def button_callback(update: Update, context: CallbackContext):
         parts = query.data.split('_')
         prefix = parts[0]
 
-        # Arama girişi
+        # Arama girişi (kalkış veya varış için)
         if query.data.startswith('search_input_'):
-            action = query.data.split('_')[2]
-            context.user_data['action'] = action
-            context.user_data['from_station_id'] = None
+            parts_search = query.data.split('_')
+            search_type = parts_search[2]  # 'from' veya 'to'
+            action = parts_search[3]
             
-            await query.message.reply_text(
-                "Lütfen arama yapmak için istasyon adı yazın (en az 2 karakter):\n\n"
-                "Örnek: İstanbul, Ankara, Konya vb."
-            )
+            context.user_data['action'] = action
+            context.user_data['search_type'] = search_type
+            
+            if search_type == 'to' and len(parts_search) > 4:
+                from_station_id = int(parts_search[4])
+                context.user_data['from_station_id'] = from_station_id
+                from_station = get_station_by_id(from_station_id)
+                await query.message.reply_text(
+                    f"Kalkış: *{from_station['name']}*\n\n"
+                    "Lütfen varış istasyonu aramak için istasyon adı yazın (en az 2 karakter):\n\n"
+                    "Örnek: İstanbul, Ankara, Konya vb.",
+                    parse_mode='Markdown'
+                )
+            else:
+                context.user_data['from_station_id'] = None
+                await query.message.reply_text(
+                    "Lütfen kalkış istasyonu aramak için istasyon adı yazın (en az 2 karakter):\n\n"
+                    "Örnek: İstanbul, Ankara, Konya vb."
+                )
             return
 
         # Yeni arama
@@ -649,12 +671,14 @@ async def button_callback(update: Update, context: CallbackContext):
             return
 
         # Arama sonuçlarından seçim
+        # Format: search_from_{action}_{station_id} veya search_to_{action}_{from_station_id}_{to_station_id}
         if prefix == 'search':
-            station_type = parts[1]
+            station_type = parts[1]  # 'from' veya 'to'
             action = parts[2]
-            station_id = int(parts[3])
             
             if station_type == 'from':
+                # Kalkış istasyonu seçildi: search_from_{action}_{station_id}
+                station_id = int(parts[3])
                 from_station = get_station_by_id(station_id)
                 context.user_data['from_station_id'] = station_id
                 
@@ -665,13 +689,14 @@ async def button_callback(update: Update, context: CallbackContext):
                     parse_mode='Markdown'
                 )
             elif station_type == 'to':
+                # Varış istasyonu seçildi: search_to_{action}_{from_station_id}_{to_station_id}
                 from_station_id = int(parts[3])
                 to_station_id = int(parts[4])
                 
                 from_station = get_station_by_id(from_station_id)
                 to_station = get_station_by_id(to_station_id)
                 
-                keyboard = create_date_keyboard(action=action, from_station=from_station_id, to_station=to_station_id)
+                keyboard = create_date_keyboard(action=action, from_station_id=from_station_id, to_station_id=to_station_id)
                 await query.edit_message_text(
                     text=f"Kalkış: *{from_station['name']}*\nVarış: *{to_station['name']}*\n\nLütfen bir *tarih* seçin:",
                     reply_markup=keyboard,
