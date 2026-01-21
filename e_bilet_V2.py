@@ -247,8 +247,164 @@ def create_search_result_keyboard(stations: list, action: str, from_station_id: 
     
     return InlineKeyboardMarkup(keyboard)
 
-def check_api_and_parse(from_id: int, to_id: int, target_date: datetime):
-    """API'yi kontrol eder ve bilet durumunu parse eder"""
+def get_available_train_times(from_id: int, to_id: int, target_date: datetime) -> list:
+    """
+    Seçilen güzergah ve tarihteki tren kalkış saatlerini döndürür.
+    Returns: [{"time": "08:00", "train_name": "YHT 1234"}, ...]
+    """
+    dynamic_token = get_dynamic_token()
+    if not dynamic_token:
+        return []
+    
+    headers = {
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'tr',
+        'Authorization': dynamic_token,
+        'Connection': 'keep-alive',
+        'Content-Type': 'application/json',
+        'Origin': 'https://ebilet.tcddtasimacilik.gov.tr',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'unit-id': '3895',
+    }
+    
+    from_station = get_station_by_id(from_id)
+    to_station = get_station_by_id(to_id)
+    
+    if not from_station or not to_station:
+        return []
+    
+    api_search_date = target_date - timedelta(days=1)
+    date_str = api_search_date.strftime("%d-%m-%Y") + " 21:00:00"
+    
+    json_data = {
+        'searchRoutes': [
+            {
+                'departureStationId': from_id,
+                'departureStationName': from_station['name'],
+                'arrivalStationId': to_id,
+                'arrivalStationName': to_station['name'],
+                'departureDate': date_str,
+            },
+        ],
+        'passengerTypeCounts': [{'id': 0, 'count': 1}],
+        'searchReservation': False,
+        'searchType': 'DOMESTIC',
+        'blTrainTypes': ['TURISTIK_TREN'],
+    }
+    
+    try:
+        response = requests.post(
+            'https://web-api-prod-ytp.tcddtasimacilik.gov.tr/tms/train/train-availability',
+            params=params,
+            headers=headers,
+            json=json_data,
+            timeout=15
+        )
+        
+        if response.status_code != 200:
+            return []
+        
+        data = response.json()
+        sefer_gruplari = data.get("trainLegs", [{}])[0].get("trainAvailabilities", [])
+        
+        train_times = []
+        for sefer_grubu in sefer_gruplari:
+            trenler = sefer_grubu.get("trains", [])
+            for tren in trenler:
+                try:
+                    timestamp_ms = tren["segments"][0]["departureTime"]
+                    timestamp_sn = timestamp_ms / 1000
+                    kalkis_saati = datetime.fromtimestamp(timestamp_sn).strftime("%H:%M")
+                    tren_adi = tren.get("trainName", "Tren")
+                    train_times.append({
+                        "time": kalkis_saati,
+                        "train_name": tren_adi
+                    })
+                except (KeyError, IndexError):
+                    continue
+        
+        # Saate göre sırala
+        train_times.sort(key=lambda x: x["time"])
+        return train_times
+        
+    except Exception as e:
+        print(f"Tren saatleri alınırken hata: {e}")
+        return []
+
+def create_time_selection_keyboard(available_times: list, selected_times: list, callback_prefix: str) -> InlineKeyboardMarkup:
+    """
+    Saat seçim klavyesi oluşturur.
+    Seçilen saatler ✅ ile işaretlenir.
+    """
+    keyboard = []
+    row = []
+    
+    for train_info in available_times:
+        time_str = train_info["time"]
+        is_selected = time_str in selected_times
+        
+        # Buton metni: seçiliyse ✅, değilse normal
+        button_text = f"✅ {time_str}" if is_selected else time_str
+        callback_data = f"{callback_prefix}_toggle_{time_str}"
+        
+        row.append(InlineKeyboardButton(button_text, callback_data=callback_data))
+        
+        if len(row) == 3:
+            keyboard.append(row)
+            row = []
+    
+    if row:
+        keyboard.append(row)
+    
+    # Alt butonlar: Tümünü Seç / Seçimi Temizle ve Devam
+    select_all_text = "📋 Tümünü Seç" if len(selected_times) < len(available_times) else "🔄 Seçimi Temizle"
+    keyboard.append([
+        InlineKeyboardButton(select_all_text, callback_data=f"{callback_prefix}_all"),
+        InlineKeyboardButton("➡️ Devam", callback_data=f"{callback_prefix}_done")
+    ])
+    
+    keyboard.append([InlineKeyboardButton("❌ İptal", callback_data="cancel_search")])
+    
+    return InlineKeyboardMarkup(keyboard)
+
+def create_business_keyboard(callback_prefix: str) -> InlineKeyboardMarkup:
+    """Business class dahil/hariç seçim klavyesi"""
+    keyboard = [
+        [
+            InlineKeyboardButton("🪑 Sadece Ekonomi", callback_data=f"{callback_prefix}_no"),
+            InlineKeyboardButton("💼 Business Dahil", callback_data=f"{callback_prefix}_yes")
+        ],
+        [InlineKeyboardButton("❌ İptal", callback_data="cancel_search")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def create_passenger_count_keyboard(callback_prefix: str) -> InlineKeyboardMarkup:
+    """Kişi sayısı seçim klavyesi (1-6)"""
+    keyboard = [
+        [
+            InlineKeyboardButton("1 Kişi", callback_data=f"{callback_prefix}_1"),
+            InlineKeyboardButton("2 Kişi", callback_data=f"{callback_prefix}_2"),
+            InlineKeyboardButton("3 Kişi", callback_data=f"{callback_prefix}_3")
+        ],
+        [
+            InlineKeyboardButton("4 Kişi", callback_data=f"{callback_prefix}_4"),
+            InlineKeyboardButton("5 Kişi", callback_data=f"{callback_prefix}_5"),
+            InlineKeyboardButton("6 Kişi", callback_data=f"{callback_prefix}_6")
+        ],
+        [InlineKeyboardButton("❌ İptal", callback_data="cancel_search")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def check_api_and_parse(from_id: int, to_id: int, target_date: datetime, 
+                         selected_times: list = None, include_business: bool = True, min_seats: int = 1):
+    """
+    API'yi kontrol eder ve bilet durumunu parse eder.
+    
+    Args:
+        selected_times: Sadece bu saatlerdeki trenleri kontrol et (None = hepsi)
+        include_business: Business sınıfını dahil et
+        min_seats: Minimum koltuk sayısı filtresi
+    """
     dynamic_token = get_dynamic_token()
 
     if not dynamic_token:
@@ -334,6 +490,10 @@ def check_api_and_parse(from_id: int, to_id: int, target_date: datetime):
                     kalkis_saati_str = datetime.fromtimestamp(timestamp_sn).strftime("%H:%M")
                     tren_adi = tren.get("trainName", f"Tren {toplam_tren_sayaci}")
                     
+                    # Saat filtresi: Seçilen saatler varsa ve bu saat listede yoksa atla
+                    if selected_times and kalkis_saati_str not in selected_times:
+                        continue
+                    
                     tren_mesaj_taslagi += f"\n<b>{tren_adi} (Kalkış: {kalkis_saati_str})</b>:\n"
                     
                     vagon_bilgisi_sozlugu = tren["availableFareInfo"][0]
@@ -346,11 +506,18 @@ def check_api_and_parse(from_id: int, to_id: int, target_date: datetime):
                         sinif_adi = vagon["cabinClass"]["name"]
                         uygun_koltuk = vagon["availabilityCount"]
                         
+                        # İstenmeyen vagon tipleri
                         unwanted_types = ["TEKERLEKLİ SANDALYE", "YATAKLI", "LOCA"]
+                        
+                        # Business filtresi
+                        if not include_business and "BUSINESS" in sinif_adi.upper():
+                            continue
+                        
                         if sinif_adi.upper() in unwanted_types:
                             continue
-                            
-                        if uygun_koltuk > 0:
+                        
+                        # Minimum koltuk filtresi
+                        if uygun_koltuk >= min_seats:
                             bulunan_koltuk = True
                             vagon_bulundu_bu_trende = True
                             minimum_fiyat = vagon["minPrice"]
@@ -363,7 +530,7 @@ def check_api_and_parse(from_id: int, to_id: int, target_date: datetime):
                     print(f"Parsing error: {e}")
 
         if not bulunan_koltuk:
-            return (False, f"ℹ️ {route_str} yönüne sefer bulundu, ancak <b>tüm vagonlar dolu</b>.")
+            return (False, f"ℹ️ {route_str} yönüne sefer bulundu, ancak <b>kriterlere uygun yer bulunamadı</b>.")
         else:
             return (True, result_message)
 
@@ -381,15 +548,40 @@ def run_one_time_check(chat_id: str, from_id: int, to_id: int, target_date: date
     send_telegram_message(message, chat_id)
     print(f"Tek seferlik kontrol tamamlandı ({chat_id}).")
 
-def monitoring_loop(chat_id: str, stop_event: threading.Event, from_id: int, to_id: int, target_date: datetime, interval_seconds: int):
-    """Sürekli izleme döngüsü"""
+def monitoring_loop(chat_id: str, stop_event: threading.Event, from_id: int, to_id: int, 
+                     target_date: datetime, interval_seconds: int,
+                     selected_times: list = None, include_business: bool = True, min_seats: int = 1):
+    """
+    Sürekli izleme döngüsü.
+    
+    Args:
+        selected_times: Sadece bu saatlerdeki trenleri izle (None = hepsi)
+        include_business: Business sınıfını dahil et
+        min_seats: Minimum koltuk sayısı filtresi
+    """
     from_station = get_station_by_id(from_id)
     to_station = get_station_by_id(to_id)
     
+    # Filtre özeti oluştur
+    filter_info = []
+    if selected_times:
+        times_str = ", ".join(selected_times)
+        filter_info.append(f"⏰ Saatler: {times_str}")
+    else:
+        filter_info.append("⏰ Saatler: Tümü")
+    
+    filter_info.append(f"💼 Business: {'Dahil' if include_business else 'Hariç'}")
+    filter_info.append(f"👥 Min. Koltuk: {min_seats}")
+    
+    filter_summary = "\n".join(filter_info)
+    
     print(f"API İzleme başladı: {chat_id} | {from_station['name']} -> {to_station['name']}")
     send_telegram_message(
-        f"Takip başladı: *{from_station['name']} ➡ {to_station['name']}* | {target_date.strftime('%d %B')}. "
-        f"{interval_seconds} saniyede bir kontrol edilecek.",
+        f"🚂 *Takip başladı!*\n\n"
+        f"*{from_station['name']} ➡ {to_station['name']}*\n"
+        f"📅 {target_date.strftime('%d %B %Y')}\n\n"
+        f"*Filtreler:*\n{filter_summary}\n\n"
+        f"🔄 {interval_seconds} saniyede bir kontrol edilecek.",
         chat_id
     )
     
@@ -399,7 +591,8 @@ def monitoring_loop(chat_id: str, stop_event: threading.Event, from_id: int, to_
     while not stop_event.is_set():
         print(f"API Kontrol ediliyor ({chat_id})...")
         
-        found, message = check_api_and_parse(from_id, to_id, target_date)
+        found, message = check_api_and_parse(from_id, to_id, target_date, 
+                                              selected_times, include_business, min_seats)
         
         current_state = {}
         
@@ -435,7 +628,7 @@ def monitoring_loop(chat_id: str, stop_event: threading.Event, from_id: int, to_
                 previous_state = current_state.copy()
             else:
                 print(f"İLK KONTROL - BOŞ YER YOK ({chat_id})")
-                send_telegram_message("ℹ️ İlk kontrol tamamlandı. Şu anda uygun yer bulunmuyor. Yer açıldığında bildirim alacaksınız.", chat_id)
+                send_telegram_message("ℹ️ İlk kontrol tamamlandı. Şu anda kriterlere uygun yer bulunmuyor. Yer açıldığında bildirim alacaksınız.", chat_id)
             first_check = False
         
         else:
@@ -651,12 +844,13 @@ async def button_callback(update: Update, context: CallbackContext):
             to_station = get_station_by_id(to_station_id)
             
             date_tr_str = target_date.strftime("%d %B %Y")
-            await query.edit_message_text(
-                text=f"🚆 *{from_station['name']}* ➡ *{to_station['name']}*\n🗓 *{date_tr_str}*\n\nAPI sorgulanıyor...", 
-                parse_mode='Markdown'
-            )
 
             if action == "check":
+                # Tek seferlik kontrol - direkt başlat
+                await query.edit_message_text(
+                    text=f"🚆 *{from_station['name']}* ➡ *{to_station['name']}*\n🗓 *{date_tr_str}*\n\nAPI sorgulanıyor...", 
+                    parse_mode='Markdown'
+                )
                 print(f"Check başlatıldı: {from_station['name']} -> {to_station['name']}")
                 threading.Thread(
                     target=run_one_time_check,
@@ -664,23 +858,184 @@ async def button_callback(update: Update, context: CallbackContext):
                 ).start()
             
             elif action == "monitor":
+                # Monitor - sefer saatlerini çek ve göster
                 if chat_id in monitor_jobs:
                     await query.message.reply_text("Zaten aktif bir izlemeniz var. /stop")
                     return
-
-                print(f"Monitor başlatıldı: {from_station['name']} -> {to_station['name']}")
-                check_interval = 30
-                stop_event = threading.Event()
-                monitor_thread = threading.Thread(
-                    target=monitoring_loop,
-                    args=(chat_id, stop_event, from_station_id, to_station_id, target_date, check_interval)
+                
+                await query.edit_message_text(
+                    text=f"🚆 *{from_station['name']}* ➡ *{to_station['name']}*\n🗓 *{date_tr_str}*\n\n⏳ Sefer saatleri alınıyor...", 
+                    parse_mode='Markdown'
                 )
                 
-                monitor_jobs[chat_id] = (monitor_thread, stop_event)
-                monitor_thread.start()
+                # Sefer saatlerini al
+                available_times = get_available_train_times(from_station_id, to_station_id, target_date)
+                
+                if not available_times:
+                    await query.edit_message_text(
+                        text=f"❌ *{from_station['name']}* ➡ *{to_station['name']}*\n🗓 *{date_tr_str}*\n\nBu tarihte sefer bulunamadı.", 
+                        parse_mode='Markdown'
+                    )
+                    return
+                
+                # Kullanıcı durumunu kaydet
+                user_states[chat_id] = {
+                    "state": "selecting_times",
+                    "action": "monitor",
+                    "from_station_id": from_station_id,
+                    "to_station_id": to_station_id,
+                    "target_date": target_date,
+                    "available_times": available_times,
+                    "selected_times": [t["time"] for t in available_times],  # Başta hepsi seçili
+                    "include_business": False,
+                    "min_seats": 1
+                }
+                
+                # Saatleri göster
+                times_info = "\n".join([f"• {t['time']} - {t['train_name']}" for t in available_times[:10]])
+                keyboard = create_time_selection_keyboard(
+                    available_times, 
+                    user_states[chat_id]["selected_times"],
+                    "mtime"
+                )
+                await query.edit_message_text(
+                    text=f"🚆 *{from_station['name']}* ➡ *{to_station['name']}*\n🗓 *{date_tr_str}*\n\n"
+                         f"*Mevcut Seferler:*\n{times_info}\n\n"
+                         f"⏰ *İzlemek istediğiniz saatleri seçin:*\n(Seçili olanlar ✅ ile gösterilir)",
+                    reply_markup=keyboard,
+                    parse_mode='Markdown'
+                )
+        
+        # Saat seçimi callback'leri
+        elif prefix == 'mtime':
+            if chat_id not in user_states or user_states[chat_id].get("state") != "selecting_times":
+                await query.edit_message_text("❌ Oturum süresi doldu. Lütfen /monitor ile tekrar başlayın.")
+                return
+            
+            state = user_states[chat_id]
+            sub_action = parts[1]
+            
+            if sub_action == "toggle":
+                time_str = parts[2]
+                if time_str in state["selected_times"]:
+                    state["selected_times"].remove(time_str)
+                else:
+                    state["selected_times"].append(time_str)
+                
+                # Klavyeyi güncelle
+                keyboard = create_time_selection_keyboard(
+                    state["available_times"],
+                    state["selected_times"],
+                    "mtime"
+                )
+                await query.edit_message_reply_markup(reply_markup=keyboard)
+            
+            elif sub_action == "all":
+                # Tümünü seç/temizle
+                if len(state["selected_times"]) < len(state["available_times"]):
+                    state["selected_times"] = [t["time"] for t in state["available_times"]]
+                else:
+                    state["selected_times"] = []
+                
+                keyboard = create_time_selection_keyboard(
+                    state["available_times"],
+                    state["selected_times"],
+                    "mtime"
+                )
+                await query.edit_message_reply_markup(reply_markup=keyboard)
+            
+            elif sub_action == "done":
+                if not state["selected_times"]:
+                    await query.answer("⚠️ En az bir saat seçmelisiniz!", show_alert=True)
+                    return
+                
+                # Business seçimine geç
+                state["state"] = "selecting_business"
+                keyboard = create_business_keyboard("mbiz")
+                
+                from_station = get_station_by_id(state["from_station_id"])
+                to_station = get_station_by_id(state["to_station_id"])
+                date_tr_str = state["target_date"].strftime("%d %B %Y")
+                times_str = ", ".join(sorted(state["selected_times"]))
+                
+                await query.edit_message_text(
+                    text=f"🚆 *{from_station['name']}* ➡ *{to_station['name']}*\n🗓 *{date_tr_str}*\n"
+                         f"⏰ Saatler: {times_str}\n\n"
+                         f"💼 *Business sınıfını dahil etmek ister misiniz?*",
+                    reply_markup=keyboard,
+                    parse_mode='Markdown'
+                )
+        
+        # Business seçimi callback'leri
+        elif prefix == 'mbiz':
+            if chat_id not in user_states or user_states[chat_id].get("state") != "selecting_business":
+                await query.edit_message_text("❌ Oturum süresi doldu. Lütfen /monitor ile tekrar başlayın.")
+                return
+            
+            state = user_states[chat_id]
+            include_business = parts[1] == "yes"
+            state["include_business"] = include_business
+            
+            # Kişi sayısı seçimine geç
+            state["state"] = "selecting_count"
+            keyboard = create_passenger_count_keyboard("mcount")
+            
+            from_station = get_station_by_id(state["from_station_id"])
+            to_station = get_station_by_id(state["to_station_id"])
+            date_tr_str = state["target_date"].strftime("%d %B %Y")
+            times_str = ", ".join(sorted(state["selected_times"]))
+            biz_str = "Dahil" if include_business else "Hariç"
+            
+            await query.edit_message_text(
+                text=f"🚆 *{from_station['name']}* ➡ *{to_station['name']}*\n🗓 *{date_tr_str}*\n"
+                     f"⏰ Saatler: {times_str}\n💼 Business: {biz_str}\n\n"
+                     f"👥 *Kaç kişilik yer arıyorsunuz?*\n(En az bu kadar boş yer olunca bildirim alacaksınız)",
+                reply_markup=keyboard,
+                parse_mode='Markdown'
+            )
+        
+        # Kişi sayısı seçimi callback'leri
+        elif prefix == 'mcount':
+            if chat_id not in user_states or user_states[chat_id].get("state") != "selecting_count":
+                await query.edit_message_text("❌ Oturum süresi doldu. Lütfen /monitor ile tekrar başlayın.")
+                return
+            
+            state = user_states[chat_id]
+            min_seats = int(parts[1])
+            state["min_seats"] = min_seats
+            
+            # İzlemeyi başlat
+            from_station = get_station_by_id(state["from_station_id"])
+            to_station = get_station_by_id(state["to_station_id"])
+            date_tr_str = state["target_date"].strftime("%d %B %Y")
+            
+            await query.edit_message_text(
+                text=f"✅ *İzleme ayarları tamamlandı!*\n\n"
+                     f"🚆 *{from_station['name']}* ➡ *{to_station['name']}*\n🗓 *{date_tr_str}*\n\n"
+                     f"İzleme başlatılıyor...",
+                parse_mode='Markdown'
+            )
+            
+            # Monitor thread'i başlat
+            check_interval = 30
+            stop_event = threading.Event()
+            monitor_thread = threading.Thread(
+                target=monitoring_loop,
+                args=(chat_id, stop_event, state["from_station_id"], state["to_station_id"], 
+                      state["target_date"], check_interval, 
+                      state["selected_times"], state["include_business"], state["min_seats"])
+            )
+            
+            monitor_jobs[chat_id] = (monitor_thread, stop_event)
+            monitor_thread.start()
+            
+            # Kullanıcı durumunu temizle
+            del user_states[chat_id]
 
     except Exception as e:
         print(f"Callback hatası: {e}")
+        import traceback
+        traceback.print_exc()
         await query.message.reply_text(f"Buton işlemi sırasında hata: {e}")
 
 async def text_message_handler(update: Update, context: CallbackContext):
@@ -766,8 +1121,8 @@ def main():
     app.add_handler(CommandHandler("monitor", monitor_command))
     app.add_handler(CommandHandler("stop", stop_command))
     
-    # Callback handler - cancel_search pattern'i de ekle
-    app.add_handler(CallbackQueryHandler(button_callback, pattern='^(from_|to_|date_|cancel_search)'))
+    # Callback handler - tüm button pattern'leri
+    app.add_handler(CallbackQueryHandler(button_callback, pattern='^(from_|to_|date_|mtime_|mbiz_|mcount_|cancel_search)'))
     
     # Metin mesajları için handler (komut olmayan mesajlar)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
