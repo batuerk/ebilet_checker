@@ -180,18 +180,27 @@ def normalize_turkish(text: str) -> str:
     Türkçe karakterleri ASCII karşılıklarına dönüştürür.
     Bu sayede 'Eskisehir' yazarak 'Eskişehir' bulunabilir.
     """
-    turkish_map = {
-        'ş': 's', 'Ş': 's',
-        'ı': 'i', 'İ': 'i',
-        'ğ': 'g', 'Ğ': 'g',
-        'ü': 'u', 'Ü': 'u',
-        'ö': 'o', 'Ö': 'o',
-        'ç': 'c', 'Ç': 'c',
-        'I': 'i',  # Türkçe'de büyük I -> küçük ı, ama aramada i olarak eşleşsin
-    }
+    if not text:
+        return ""
+    
+    # Trim and handle Turkish-specific casing before lowercasing
+    # to avoid 'i' + combining dot issue (U+0307)
+    text = text.strip().replace('İ', 'i').replace('I', 'ı')
     result = text.lower()
+    
+    turkish_map = {
+        'ş': 's',
+        'ı': 'i',
+        'ğ': 'g',
+        'ü': 'u',
+        'ö': 'o',
+        'ç': 'c',
+        '\u0307': ''  # Remove combining dot if it survived anywhere
+    }
+    
     for turkish_char, ascii_char in turkish_map.items():
         result = result.replace(turkish_char, ascii_char)
+    
     return result
 
 def search_stations(query: str, from_station_id: int = None) -> list:
