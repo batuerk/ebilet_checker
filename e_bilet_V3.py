@@ -43,6 +43,7 @@ STATION_MAP = {
     "POLATLI":      {'id': 244, 'fullName': 'POLATLI YHT'},
     "SİNCAN":       {'id': 192, 'fullName': 'SİNCAN'},
     "ANKARA GAR":   {'id': 98, 'fullName': 'ANKARA GAR'},
+    "ESKİŞEHİR":   {'id': 93, 'fullName': 'ESKİŞEHİR'},
 }
 
 params = {
