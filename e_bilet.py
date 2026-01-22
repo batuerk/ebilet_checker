@@ -38,6 +38,15 @@ params = {
     'userId': '1',
 }
 
+async def delete_messages(context: CallbackContext, chat_id: str, message_ids: list):
+    """Listelenen mesaj ID'lerini Telegram'dan siler"""
+    for msg_id in message_ids:
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+        except Exception as e:
+            # Mesaj zaten silinmiş veya süresi dolmuş olabilir (48 saat)
+            print(f"Mesaj silme hatası (ID: {msg_id}): {e}")
+
 def send_telegram_message(message: str, chat_id: str):
     """Telegram mesajı gönderir"""
     url = f'https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendMessage'
@@ -724,9 +733,11 @@ async def start(update: Update, context: CallbackContext):
 async def check_command(update: Update, context: CallbackContext):
     """/check komutu"""
     chat_id = str(update.message.chat_id)
+    cleanup_ids = [update.message.message_id] # Kullanıcının /check mesajı
     
     if not STATIONS_DATA:
-        await update.message.reply_text("⏳ İstasyonlar yükleniyor, lütfen bekleyin...")
+        loading_msg = await update.message.reply_text("⏳ İstasyonlar yükleniyor, lütfen bekleyin...")
+        cleanup_ids.append(loading_msg.message_id)
         if not load_stations():
             await update.message.reply_text("❌ İstasyonlar yüklenemedi. Lütfen daha sonra tekrar deneyin.")
             return
@@ -735,26 +746,30 @@ async def check_command(update: Update, context: CallbackContext):
     user_states[chat_id] = {
         "state": "waiting_from",
         "action": "check",
-        "from_station_id": None
+        "from_station_id": None,
+        "cleanup_ids": cleanup_ids
     }
     
-    await update.message.reply_text(
+    msg = await update.message.reply_text(
         "🔍 *Kalkış İstasyonu Araması*\n\n"
         "Lütfen kalkış istasyonu adını yazın (en az 3 karakter).\n"
         "Örnek: `Ankara`, `İstanbul`, `İzmir`",
         parse_mode='Markdown'
     )
+    user_states[chat_id]["cleanup_ids"].append(msg.message_id)
 
 async def monitor_command(update: Update, context: CallbackContext):
     """/monitor komutu"""
     chat_id = str(update.message.chat_id)
+    cleanup_ids = [update.message.message_id] # Kullanıcının /monitor mesajı
     
     if chat_id in monitor_jobs:
         await update.message.reply_text("Zaten aktif bir izlemeniz var. Durdurmak için /stop yazın.")
         return
     
     if not STATIONS_DATA:
-        await update.message.reply_text("⏳ İstasyonlar yükleniyor, lütfen bekleyin...")
+        loading_msg = await update.message.reply_text("⏳ İstasyonlar yükleniyor, lütfen bekleyin...")
+        cleanup_ids.append(loading_msg.message_id)
         if not load_stations():
             await update.message.reply_text("❌ İstasyonlar yüklenemedi. Lütfen daha sonra tekrar deneyin.")
             return
@@ -763,15 +778,17 @@ async def monitor_command(update: Update, context: CallbackContext):
     user_states[chat_id] = {
         "state": "waiting_from",
         "action": "monitor",
-        "from_station_id": None
+        "from_station_id": None,
+        "cleanup_ids": cleanup_ids
     }
     
-    await update.message.reply_text(
+    msg = await update.message.reply_text(
         "🔍 *Kalkış İstasyonu Araması*\n\n"
         "Lütfen kalkış istasyonu adını yazın (en az 3 karakter).\n"
         "Örnek: `Ankara`, `İstanbul`, `İzmir`",
         parse_mode='Markdown'
     )
+    user_states[chat_id]["cleanup_ids"].append(msg.message_id)
 
 async def stop_command(update: Update, context: CallbackContext):
     """/stop komutu"""
@@ -796,8 +813,13 @@ async def button_callback(update: Update, context: CallbackContext):
         # İptal butonu kontrolü
         if query.data == "cancel_search":
             if chat_id in user_states:
+                # İptal edildiğinde de mesajları temizle
+                cleanup_ids = user_states[chat_id].get("cleanup_ids", [])
+                cleanup_ids.append(query.message.message_id)
+                await delete_messages(context, chat_id, cleanup_ids)
                 del user_states[chat_id]
-            await query.edit_message_text("❌ İşlem iptal edildi.")
+            else:
+                await query.edit_message_text("❌ İşlem iptal edildi.")
             return
         
         parts = query.data.split('_')
@@ -809,10 +831,12 @@ async def button_callback(update: Update, context: CallbackContext):
             from_station = get_station_by_id(from_station_id)
             
             # Varış istasyonu araması için durum kaydet
+            cleanup_ids = user_states[chat_id].get("cleanup_ids", []) if chat_id in user_states else []
             user_states[chat_id] = {
                 "state": "waiting_to",
                 "action": action,
-                "from_station_id": from_station_id
+                "from_station_id": from_station_id,
+                "cleanup_ids": cleanup_ids
             }
             
             await query.edit_message_text(
@@ -827,9 +851,16 @@ async def button_callback(update: Update, context: CallbackContext):
             from_station_id = int(parts[2])
             to_station_id = int(parts[3])
             
-            # Kullanıcı durumunu temizle
-            if chat_id in user_states:
-                del user_states[chat_id]
+            # State geçişinde cleanup_ids'i koru
+            cleanup_ids = user_states[chat_id].get("cleanup_ids", []) if chat_id in user_states else []
+            
+            user_states[chat_id] = {
+                "state": "waiting_date",
+                "action": action,
+                "from_station_id": from_station_id,
+                "to_station_id": to_station_id,
+                "cleanup_ids": cleanup_ids
+            }
             
             from_station = get_station_by_id(from_station_id)
             to_station = get_station_by_id(to_station_id)
@@ -852,18 +883,25 @@ async def button_callback(update: Update, context: CallbackContext):
             to_station = get_station_by_id(to_station_id)
             
             date_tr_str = target_date.strftime("%d %B %Y")
+            
+            # State geçişinde cleanup_ids'i koru
+            cleanup_ids = user_states[chat_id].get("cleanup_ids", []) if chat_id in user_states else []
 
             if action == "check":
-                # Tek seferlik kontrol - direkt başlat
-                await query.edit_message_text(
-                    text=f"🚆 *{from_station['name']}* ➡ *{to_station['name']}*\n🗓 *{date_tr_str}*\n\nAPI sorgulanıyor...", 
-                    parse_mode='Markdown'
-                )
+                # Tek seferlik kontrol - Direkt başlatmadan önce temizle
+                cleanup_ids.append(query.message.message_id)
+                await delete_messages(context, chat_id, cleanup_ids)
+                
                 print(f"Check başlatıldı: {from_station['name']} -> {to_station['name']}")
                 threading.Thread(
                     target=run_one_time_check,
                     args=(chat_id, from_station_id, to_station_id, target_date)
                 ).start()
+                
+                # Kullanıcı durumunu temizle
+                if chat_id in user_states:
+                    del user_states[chat_id]
+                return # Check bitti
             
             elif action == "monitor":
                 # Monitor - sefer saatlerini çek ve göster
@@ -896,7 +934,8 @@ async def button_callback(update: Update, context: CallbackContext):
                     "available_times": available_times,
                     "selected_times": [t["time"] for t in available_times],  # Başta hepsi seçili
                     "include_business": False,
-                    "min_seats": 1
+                    "min_seats": 1,
+                    "cleanup_ids": cleanup_ids
                 }
                 
                 # Saatleri göster
@@ -1017,7 +1056,14 @@ async def button_callback(update: Update, context: CallbackContext):
             to_station = get_station_by_id(state["to_station_id"])
             date_tr_str = state["target_date"].strftime("%d %B %Y")
             
-            await query.edit_message_text(
+            # Önceki tüm ara mesajları temizle
+            cleanup_ids = state.get("cleanup_ids", [])
+            # Şu anki butonlu mesajın ID'sini de ekle
+            cleanup_ids.append(query.message.message_id)
+            await delete_messages(context, chat_id, cleanup_ids)
+            
+            await context.bot.send_message(
+                chat_id=chat_id,
                 text=f"✅ *İzleme ayarları tamamlandı!*\n\n"
                      f"🚆 *{from_station['name']}* ➡ *{to_station['name']}*\n🗓 *{date_tr_str}*\n\n"
                      f"İzleme başlatılıyor...",
@@ -1044,7 +1090,7 @@ async def button_callback(update: Update, context: CallbackContext):
         print(f"Callback hatası: {e}")
         import traceback
         traceback.print_exc()
-        await query.message.reply_text(f"Buton işlemi sırasında hata: {e}")
+        await context.bot.send_message(chat_id=chat_id, text=f"Buton işlemi sırasında hata: {e}")
 
 async def text_message_handler(update: Update, context: CallbackContext):
     """Kullanıcı metin mesajlarını işler (istasyon araması)"""
@@ -1055,15 +1101,18 @@ async def text_message_handler(update: Update, context: CallbackContext):
         return
     
     user_state = user_states[chat_id]
+    user_state["cleanup_ids"].append(update.message.message_id) # Kullanıcının yazdığı mesaj
+    
     search_query = update.message.text.strip()
     
     # Minimum 3 karakter kontrolü
     if len(search_query) < 3:
-        await update.message.reply_text(
+        msg = await update.message.reply_text(
             "⚠️ Lütfen en az 3 karakter girin.\n"
             "Örnek: `Ank`, `İst`, `İzm`",
             parse_mode='Markdown'
         )
+        user_state["cleanup_ids"].append(msg.message_id)
         return
     
     action = user_state["action"]
@@ -1074,20 +1123,22 @@ async def text_message_handler(update: Update, context: CallbackContext):
         results = search_stations(search_query)
         
         if not results:
-            await update.message.reply_text(
+            msg = await update.message.reply_text(
                 f"❌ *'{search_query}'* için istasyon bulunamadı.\n\n"
                 "Lütfen farklı bir arama terimi deneyin.",
                 parse_mode='Markdown'
             )
+            user_state["cleanup_ids"].append(msg.message_id)
             return
         
         keyboard = create_search_result_keyboard(results, action)
-        await update.message.reply_text(
+        msg = await update.message.reply_text(
             f"🔍 *'{search_query}'* için {len(results)} sonuç bulundu:\n\n"
             "Lütfen kalkış istasyonunu seçin:",
             reply_markup=keyboard,
             parse_mode='Markdown'
         )
+        user_state["cleanup_ids"].append(msg.message_id)
     
     elif state == "waiting_to":
         # Varış istasyonu araması
@@ -1097,21 +1148,23 @@ async def text_message_handler(update: Update, context: CallbackContext):
         results = search_stations(search_query, from_station_id)
         
         if not results:
-            await update.message.reply_text(
+            msg = await update.message.reply_text(
                 f"❌ *'{search_query}'* için varış istasyonu bulunamadı.\n\n"
                 f"*{from_station['name']}* istasyonundan gidilebilecek farklı bir istasyon arayın.",
                 parse_mode='Markdown'
             )
+            user_state["cleanup_ids"].append(msg.message_id)
             return
         
         keyboard = create_search_result_keyboard(results, action, from_station_id)
-        await update.message.reply_text(
+        msg = await update.message.reply_text(
             f"✅ Kalkış: *{from_station['name']}*\n\n"
             f"🔍 *'{search_query}'* için {len(results)} sonuç bulundu:\n\n"
             "Lütfen varış istasyonunu seçin:",
             reply_markup=keyboard,
             parse_mode='Markdown'
         )
+        user_state["cleanup_ids"].append(msg.message_id)
 
 def main():
     """Bot başlatma"""
